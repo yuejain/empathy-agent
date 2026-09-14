@@ -1,0 +1,23 @@
+{
+  "name": "empathy-agent-edgeone",
+  "version": "1.0.0",
+  "description": "情感共情陪伴Agent - 基于EdgeOne Makers平台",
+  "main": "agents/empathy-agent/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "edgeone makers dev",
+    "deploy": "edgeone makers deploy"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "^0.2.0",
+    "@langchain/openai": "^0.3.0",
+    "@langchain/core": "^0.3.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

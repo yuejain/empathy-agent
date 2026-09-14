@@ -1,0 +1,73 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# EdgeOne
+.edgeone/
+
+# WorkBuddy
+.workbuddy/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+
+# Models (large files, should be stored separately)
+models/**/*.bin
+models/**/*.pt
+models/**/*.onnx
+models/**/*.safetensors
+models/**/*.h5
+models/**/*.ckpt
+models/**/*.pth
+models/**/training_args.bin
+models/**/optimizer.pt
+models/**/scheduler.pt
+models/**/tokenizer.json
+models/**/vocab.txt
+models/**/merges.txt
+
+# Training data (may contain sensitive information)
+data/training/
+data/raw/
+data/processed/
+
+# Temporary
+*.tmp
+*.temp
