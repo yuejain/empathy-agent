@@ -551,7 +551,7 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 For questions or suggestions, please contact:
 
 - 提交 [Issue](../../issues)
-- 发送邮件 / Email: [your-email@example.com]
+- 发送邮件 / Email: 18042036670@163.com
 
 ---
 
