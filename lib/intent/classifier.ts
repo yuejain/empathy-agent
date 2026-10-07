@@ -1,3 +1,4 @@
+import { ChatGateway } from '../gateway';
 /**
  * 意图分类器 - 三级级联识别
  *
@@ -218,27 +219,10 @@ ${context.recentHistory.map((h, i) => `${i + 1}. ${h}`).join('\n')}
 }`;
 
   try {
-    const response = await fetch(`${env.AI_GATEWAY_BASE_URL}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${env.AI_GATEWAY_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: env.AI_GATEWAY_MODEL || '@makers/deepseek-v4-flash',
-        messages: [
-          { role: 'system', content: '你是对话意图分类器，严格按JSON格式输出。' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 300,
-      }),
-    });
-
-    if (!response.ok) throw new Error(`LLM error: ${response.status}`);
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
+    const content = await new ChatGateway(env).complete([
+      { role: 'system', content: '你是对话意图分类器，严格按 JSON 格式输出。' },
+      { role: 'user', content: prompt },
+    ], { temperature: 0.1, maxTokens: 300 });
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON');
 
@@ -252,7 +236,7 @@ ${context.recentHistory.map((h, i) => `${i + 1}. ${h}`).join('\n')}
       contextClues: parsed.context_clues || [],
     };
   } catch (error) {
-    console.error('Level 2 分类失败:', error);
+    // Fall back to the coarse classifier without logging user data.
     return {
       intent: 'L2.9_ambiguous_intent',
       confidence: 0.3,

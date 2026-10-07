@@ -1,75 +1,33 @@
-/**
- * 共享辅助模块 - SSE事件构建和日志记录
- */
-
-// SSE事件构建器
-export function sseEvent(data: any, eventType?: string): string {
-  const lines: string[] = [];
-  if (eventType) {
-    lines.push(`event: ${eventType}`);
-  }
-  lines.push(`data: ${JSON.stringify(data)}`);
-  return lines.join('\n') + '\n\n';
+export function sseEvent(data: unknown, eventType?: string): string {
+  return `${eventType ? `event: ${eventType}\n` : ''}data: ${JSON.stringify(data)}\n\n`;
 }
 
-// 创建SSE响应
-export function createSSEResponse(
-  generator: (signal?: AbortSignal) => AsyncGenerator<string>,
-  signal?: AbortSignal
-): Response {
+export function createSSEResponse(generator: (signal: AbortSignal) => AsyncGenerator<string>, signal?: AbortSignal): Response {
+  const abort = new AbortController();
+  const onAbort = () => abort.abort();
+  if (signal?.aborted) abort.abort();
+  else signal?.addEventListener('abort', onAbort, { once: true });
   const encoder = new TextEncoder();
-  
-  const stream = new ReadableStream({
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const heartbeat = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(sseEvent({ type: 'ping' }, 'ping')));
-        } catch (e) {
-          clearInterval(heartbeat);
-        }
-      }, 5000);
-
+        if (!cancelled && !abort.signal.aborted) controller.enqueue(encoder.encode(sseEvent({}, 'ping')));
+      }, 10000);
       try {
-        for await (const chunk of generator(signal)) {
-          if (signal?.aborted) break;
+        for await (const chunk of generator(abort.signal)) {
+          if (cancelled || abort.signal.aborted) break;
           controller.enqueue(encoder.encode(chunk));
         }
-      } catch (e) {
-        if ((e as Error).name !== 'AbortError' && !signal?.aborted) {
-          controller.enqueue(encoder.encode(sseEvent(
-            { type: 'error_message', content: (e as Error).message },
-            'error_message'
-          )));
-        }
+      } catch {
+        if (!cancelled && !abort.signal.aborted) controller.enqueue(encoder.encode(sseEvent({ type: 'error_message', content: '请求处理失败，请重试。' }, 'error_message')));
       } finally {
         clearInterval(heartbeat);
-        controller.close();
+        signal?.removeEventListener('abort', onAbort);
+        if (!cancelled) controller.close();
       }
-    }
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',
     },
+    cancel() { cancelled = true; abort.abort(); },
   });
+  return new Response(stream, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-store', 'X-Accel-Buffering': 'no' } });
 }
-
-// 日志记录器
-export const logger = {
-  info: (message: string, data?: any) => {
-    console.log(`[INFO] ${message}`, data || '');
-  },
-  error: (message: string, error?: any) => {
-    console.error(`[ERROR] ${message}`, error || '');
-  },
-  warn: (message: string, data?: any) => {
-    console.warn(`[WARN] ${message}`, data || '');
-  },
-  debug: (message: string, data?: any) => {
-    console.debug(`[DEBUG] ${message}`, data || '');
-  }
-};

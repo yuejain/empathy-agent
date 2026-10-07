@@ -1,23 +1,27 @@
 {
   "name": "empathy-agent-edgeone",
   "version": "1.0.0",
-  "description": "情感共情陪伴Agent - 基于EdgeOne Makers平台",
-  "main": "agents/empathy-agent/index.ts",
+  "description": "可本地运行的情感陪伴助手，支持 OpenAI 兼容 API",
+  "main": "dist/server/index.js",
   "scripts": {
-    "build": "tsc",
-    "dev": "edgeone makers dev",
-    "deploy": "edgeone makers deploy"
+    "build": "tsc && node scripts/copy-assets.cjs",
+    "dev": "npm run build && npm start",
+    "start": "node --env-file-if-exists=.env dist/server/index.js",
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "test:browser": "npm run build && playwright test",
+    "check": "npm test && npm run test:browser",
+    "security:check": "node scripts/check-secrets.cjs",
+    "model:check": "npm run build && node --env-file-if-exists=.env scripts/check-model.cjs"
   },
   "dependencies": {
-    "@langchain/langgraph": "^0.2.0",
-    "@langchain/openai": "^0.3.0",
-    "@langchain/core": "^0.3.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.20.5",
     "typescript": "^5.0.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.9.0"
   }
 }

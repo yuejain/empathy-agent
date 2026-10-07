@@ -12,10 +12,22 @@ build/
 
 # Environment
 .env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+.npmrc
+.pypirc
+credentials*.json
+service-account*.json
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
 
 # IDE
 .vscode/
@@ -46,6 +58,12 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv-ml/
+models/local/
+data/index/
+data/reports/
+data/manifests/
+data/cache/
 env/
 
 # Models (large files, should be stored separately)
@@ -71,3 +89,11 @@ data/processed/
 # Temporary
 *.tmp
 *.temp
+
+# Local conversations and verification outputs
+.data/
+artifacts/
+playwright-report/
+test-results/
+*.log
+*.pid

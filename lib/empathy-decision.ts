@@ -526,6 +526,25 @@ export class EmpathyDecisionEngine {
 
 // 输出过滤器
 export class OutputFilter {
+  /** Hold only prefixes of forbidden phrases so split tokens cannot bypass the filter. */
+  streaming(empathyLevel: EmpathyLevel) {
+    const rules = [ ...this.hardForbiddenPhrases.map(text => ({ text, replacement: '[已过滤]' })),
+      ...(empathyLevel === 'L5' ? [] : this.softForbiddenPhrases.map(text => ({ text, replacement: '' }))) ];
+    let pending = '';
+    const drain = (final: boolean) => {
+      let output = '';
+      while (pending) {
+        if (!final && rules.some(rule => rule.text.length > pending.length && rule.text.startsWith(pending))) break;
+        const match = rules.find(rule => pending.startsWith(rule.text));
+        if (match) { output += match.replacement; pending = pending.slice(match.text.length); continue; }
+        if (!final && rules.some(rule => rule.text.startsWith(pending))) break;
+        const char = String.fromCodePoint(pending.codePointAt(0)!);
+        output += char; pending = pending.slice(char.length);
+      }
+      return output;
+    };
+    return { feed: (text: string) => { pending += text; return drain(false); }, finish: () => drain(true) };
+  }
   private hardForbiddenPhrases: string[] = [
     // 病理化
     '你这是抑郁症', '你有焦虑症', '你患有', '你被诊断为',
