@@ -203,6 +203,9 @@ export interface SessionState {
   userId: string;
   startedAt: string;
   turnCount: number;
+  lastActiveAt?: string;
+  explicitMemories?: string[];
+  tarotDraws?: number;
 
   // 状态机状态
   currentState: GlobalState;
@@ -254,7 +257,10 @@ export interface OrchestratorInput {
   userId: string;
   sessionId: string;
   userInput: string;
-  sessionState: SessionState;
+  sessionState?: SessionState;
+  signal?: AbortSignal;
+  onDelta?: (content: string) => Promise<void> | void;
+  backend?: 'cloud' | 'local';
 }
 
 /** 编排器输出 */
@@ -269,6 +275,11 @@ export interface OrchestratorOutput {
     safetyResult: SafetyResult;
     memoryUsed: number;
     processingTimeMs: number;
+    mode?: 'demo' | 'live';
+    quality?: { score: number; warnings: string[] };
+    sources?: { source: string; source_url: string; license: string; score: number }[];
+    analysisSource?: string;
+    backend?: 'cloud' | 'local';
   };
 }
 

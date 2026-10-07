@@ -18,6 +18,7 @@ import {
   EmotionState, SessionState, SafetyResult,
   OrchestratorConfig, DEFAULT_ORCHESTRATOR_CONFIG,
 } from './types';
+import { requestedGame } from '../tarot/reflection-games';
 
 // ==================== 状态转换规则定义 ====================
 
@@ -419,6 +420,18 @@ export class ConversationStateMachine {
   ): StateDecision {
     const { currentState, turnCount, consecutiveHighEmotionTurns } = sessionState;
 
+    const directDecision = (nextState: GlobalState, level: EmpathyLevel, reason: string): StateDecision => ({
+      nextState, empathyLevel: level, shouldProgress: level === 'L4' || level === 'L5',
+      constraints: STATE_CONSTRAINTS[nextState] || {}, reason, transitionScore: 1,
+    });
+    if (safetyResult.shouldBlock) return directDecision('SAFETY_PROTOCOL', 'L1', '安全优先');
+    if (/再见|先聊到这|不想聊了|结束对话/.test(userInput)) return directDecision('SESSION_CLOSE', 'L2', '尊重结束意愿');
+    if (requestedGame(userInput)) return directDecision('TAROT_ENTRY', 'L2', '用户请求联想练习');
+    if (['INIT', 'SAFETY_SCREEN', 'ENTRY_SELECT', 'DIRECT_ENTRY', 'IMAGE_ENTRY', 'TAROT_ENTRY', 'SESSION_CLOSE', 'SAFETY_PROTOCOL'].includes(currentState)) {
+      return directDecision('EMPATHY_PHASE', 'L2', '开始或恢复直接对话');
+    }
+    if (/只想.*(说|倾诉)|不想.*(建议|行动)|别.*建议|不要.*建议/.test(userInput)) return directDecision('EMPATHY_PHASE', 'L2', '尊重倾诉意愿');
+
     // 获取当前状态的转换规则
     const rules = TRANSITION_RULES[currentState] || [];
 
@@ -584,6 +597,16 @@ export class ConversationStateMachine {
         if (value === 'wants_to_progress') return this.detectUserProgressSignal(userInput);
         if (value === 'wants_to_retreat') return this.detectUserRetreatSignal(userInput);
         if (value === 'user_expressed') return userInput.length > 5;
+        const patterns: Record<string, RegExp> = {
+          agrees_tarot: /塔罗|抽牌/, agrees_image: /图片|看图/,
+          declines_all_tools: /直接聊|不用|不要/, tarot_completed: /[ABCＡＢＣ]|像|想到|跳过/,
+          tarot_miss: /不像|跳过/, image_completed: /看到|想到|跳过/,
+          accepts_action: /试试|愿意|行动|怎么做|下一步/,
+          action_completed: /做了|完成|试过|尝试了/, wants_new_direction: /换个|换一|换方向/,
+          action_confirmed: /先这样|下次聊/, review_completed: /总结完|先聊到这/,
+          wants_new_exploration: /再聊|另一|继续探索/, safety_resolved: /现在安全|有人陪/,
+        };
+        if (patterns[value]) return patterns[value].test(userInput);
         return false;
       case 'contains':
         return userInput.includes(value);

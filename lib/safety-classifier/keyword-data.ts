@@ -20,6 +20,8 @@ export interface CrisisKeywordEntry {
 // ==================== 关键词库 ====================
 
 export const CRISIS_KEYWORDS: CrisisKeywordEntry[] = [
+  { keyword: '服药过量', category: '自伤行为', riskLevel: 'L2', weight: 1, subtype: 'suicide_self_harm' },
+  { keyword: '吞了整瓶', category: '自伤行为', riskLevel: 'L2', weight: 1, subtype: 'suicide_self_harm' },
   // ========== 自杀/自伤类 ==========
   // L2 高危关键词
   { keyword: '想死', category: '自杀意念', riskLevel: 'L2', weight: 0.95, subtype: 'suicide_self_harm' },
@@ -95,6 +97,8 @@ export interface CrisisPatternEntry {
 }
 
 export const CRISIS_PATTERNS: CrisisPatternEntry[] = [
+  { name: '已经过量服药', pattern: '(吃|吞|服).{0,8}(大量|很多|一大把|一把|整瓶|过量).{0,5}(药|安眠|止痛)', riskLevel: 'L2', category: '自伤行为', description: '已发生的潜在药物过量' },
+
   // ========== 自杀意念变体 ==========
   {
     name: '想死变体',

@@ -1,3 +1,4 @@
+import { ChatGateway, ChatMessage } from '../gateway';
 /**
  * 记忆管线 - 完整的实时链路编排
  *
@@ -461,7 +462,7 @@ export class MemoryPipeline {
     userInput: string
   ): Promise<string> {
     try {
-      const messages = [
+      const messages: ChatMessage[] = [
         { role: 'system', content: systemPrompt },
         ...history.slice(-this.config.historyTurns).map(t => ({
           role: t.role,
@@ -470,28 +471,9 @@ export class MemoryPipeline {
         { role: 'user', content: userInput },
       ];
 
-      const response = await fetch(`${env.AI_GATEWAY_BASE_URL}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${env.AI_GATEWAY_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: env.AI_GATEWAY_MODEL || '@makers/deepseek-v4-flash',
-          messages,
-          temperature: 0.7,
-          max_tokens: 1000,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`LLM API 调用失败: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data.choices[0].message.content;
+      return await new ChatGateway(env).complete(messages);
     } catch (error) {
-      console.error('LLM 调用失败:', error);
+      // Do not log conversations or upstream error bodies.
       return '抱歉，处理您的请求时出现了问题。请稍后再试。';
     }
   }
