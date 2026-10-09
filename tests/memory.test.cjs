@@ -56,6 +56,14 @@ test('questions are not assertions and semantic extraction cannot trim away a qu
   const p=await provider(t,{memories:[{kind:'emotion',quote:'我很焦虑',topic:'焦虑',certainty:'stated',state:'current',subject:'user'}]});
   assert.equal((await inferCandidates(new ChatGateway(p.env),'我很焦虑吗？')).length,0);
 });
+test('forgetting stays available while a conversation remains in safety support', async () => {
+  const o=new ConversationOrchestrator({APP_MODE:'demo'});
+  await o.processTurn({userId:'u',sessionId:'s',userInput:'我叫小林'});
+  await o.processTurn({userId:'u',sessionId:'s',userInput:'我不想活了'});
+  const result=await o.processTurn({userId:'u',sessionId:'s',userInput:'忘记所有记忆'});
+  assert.equal(result.updatedMemory.entries.length,0); assert.match(result.response,/已清除所有跨会话记忆/);
+  assert.equal(result.metadata.state,'SAFETY_PROTOCOL');
+});
 test('semantic extraction expands coverage but cannot invent evidence, promote hypotheses, or copy background', async t => {
   const quote = '凌晨两点了，报告还没写完';
   const p = await provider(t, { memories: [

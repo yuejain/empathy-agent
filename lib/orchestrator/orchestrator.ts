@@ -105,6 +105,12 @@ export class ConversationOrchestrator {
       decision = { nextState: 'SAFETY_PROTOCOL', empathyLevel: 'L1', shouldProgress: false,
         constraints: { empathyOnly: true, noProgression: true }, reason: '优先确认即时安全', transitionScore: 1 };
       response = crisisResponse(safety.riskType);
+      // Forgetting is a data-control request and remains available in safety mode.
+      if (memoryCommand(userInput) === 'forget') {
+        const cleared = prepareMemory(memory, userInput, { sessionId, turnId: String(state.turnCount + 1), now: Date.now() });
+        memory = cleared.profile;
+        response = cleared.reply + '\n\n' + response;
+      }
     } else {
       const extractor = backend === 'local' ? new ChatGateway({ APP_MODE: this.knowledge.url ? 'live' : 'demo', AI_GATEWAY_BASE_URL: this.knowledge.url + '/v1', AI_GATEWAY_MODEL: 'local-qwen3-0.6b', AI_TIMEOUT_MS: '10000' })
         : new ChatGateway({ ...this.env, AI_TIMEOUT_MS: '10000' });
