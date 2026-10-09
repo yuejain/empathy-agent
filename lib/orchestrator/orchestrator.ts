@@ -2,14 +2,20 @@ import { ChatGateway, ChatMessage } from '../gateway';
 import { SafetyClassifier, RuleLayer } from '../safety-classifier/classifier';
 import { crisisResponse } from '../crisis-response';
 import { EmotionRecognizer } from '../emotion-recognition';
-import { OutputFilter } from '../empathy-decision';
-import { IntentClassifier } from '../intent';
-import { requestedGame, reflectionGame } from '../tarot/reflection-games';
+import { EmpathyDecisionEngine, OutputFilter } from '../empathy-decision';
+import { IntentClassifier, IntentRouter } from '../intent';
+import { communicationGuidance } from '../intent/router';
+import { requestedGame } from '../tarot/reflection-games';
+import { validReflection, reflectionPrompt } from '../tarot/reflection-session';
+import { TarotInteractionManager } from '../tarot/interaction';
 import { LocalKnowledge, localEmotions } from '../local-knowledge';
 import { buildEmotionRag, EmotionRagContext, emotionRagPrompt } from '../emotion-rag';
 import { emptyProfile, inferCandidates, MemoryProfile, memoryCommand, memoryPrompt, prepareMemory, retrieveMemories } from '../memory';
 import { ConversationStateMachine } from './state-machine';
 import { JourneyStageTracker } from './journey-tracker';
+import { retrievalRequest, validSemanticScores, boundedHistory } from '../context/retrieval';
+import { continuityView, continuityPrompt } from '../context/continuity';
+import { focusedTask } from '../memory/follow-up';
 import {
   SessionState, StateDecision, EmotionState, SafetyResult,
   OrchestratorInput, OrchestratorOutput, OrchestratorConfig, DEFAULT_ORCHESTRATOR_CONFIG,
@@ -23,6 +29,9 @@ export class ConversationOrchestrator {
   private gateway: ChatGateway;
   private emotionRecognizer: EmotionRecognizer;
   private outputFilter = new OutputFilter();
+  private empathyEngine = new EmpathyDecisionEngine();
+  private reflectionManager = new TarotInteractionManager();
+  private extractor: ChatGateway;
   private intentClassifier: IntentClassifier;
   private env: Record<string, string>;
   private knowledge: LocalKnowledge;
@@ -35,6 +44,7 @@ export class ConversationOrchestrator {
     this.config = { ...DEFAULT_ORCHESTRATOR_CONFIG, ...config };
     this.stateMachine = new ConversationStateMachine(this.config);
     this.gateway = new ChatGateway(env);
+    this.extractor = new ChatGateway({ ...env, AI_TIMEOUT_MS: '10000' });
     this.emotionRecognizer = new EmotionRecognizer(env);
     this.intentClassifier = new IntentClassifier(env, { enableContextEnhanced: false });
   }
@@ -48,22 +58,38 @@ export class ConversationOrchestrator {
     if (existing.userId !== userId || existing.sessionId !== sessionId) throw new Error('会话身份不匹配。');
     const state: SessionState = structuredClone(existing);
     delete state.explicitMemories;
+    for(const key of ['memoryOperationsPending','kvCacheValid']) delete (state as unknown as Record<string,unknown>)[key];
     const originalMemory = input.memoryProfile || this.memoryProfiles.get(userId) || emptyProfile(userId);
     if (originalMemory.owner !== userId) throw new Error('记忆身份不匹配。');
     let memory = structuredClone(originalMemory);
-    const historyFor = (profile: MemoryProfile) => state.recentHistory.filter(t => t.memoryEpoch === profile.contextEpoch && Date.now() - Date.parse(t.timestamp) < 3600000);
+    const historyFor = (profile: MemoryProfile) => boundedHistory(state.recentHistory,profile.contextEpoch);
+    if (state.memoryContextEpoch !== memory.contextEpoch) { delete state.focusMemoryId; delete state.reflection; }
+    state.reflection = validReflection(state.reflection, memory.contextEpoch);
+    const command = memoryCommand(userInput), game = requestedGame(userInput);
+    const gameReply = !game && state.reflection ? this.reflectionManager.select(state.reflection, userInput) : undefined;
+    const origin = { sessionId, turnId:String(state.turnCount + 1), now:Date.now() };
+    const earlyMemory = game || gameReply ? memory : prepareMemory(memory, userInput, origin, [], state.focusMemoryId).profile;
+    const retrieval = retrievalRequest(userInput, earlyMemory, historyFor(earlyMemory));
+    const timings: Record<string, number> = {};
+    const timed = async <T>(name:string, work:Promise<T>):Promise<T> => {
+      const at = performance.now(); try { return await work; } finally { timings[name] = Math.round(performance.now()-at); }
+    };
 
     // Rule-level crisis checks must run before any external network request.
     const rule = new RuleLayer().classify(userInput);
-    const continuingSafety = state.currentState === 'SAFETY_PROTOCOL' && !/我现在(很)?安全|我已经安全|有人陪着我|已经联系.*(家人|朋友|急救)/.test(userInput);
+    const continuingSafety = state.currentState === 'SAFETY_PROTOCOL' && !/我现在(很)?安全|我已经安全|有人陪着我|已经联系.*(家人|朋友|急救)|I am safe now|I'm safe now/i.test(userInput);
     const quickCrisis = rule.preliminaryLevel === 'L2' || continuingSafety;
-    const classifier = new SafetyClassifier(this.env, { enableModelLayer: !quickCrisis });
+    const deterministic = !!(command || game || gameReply);
+    const classifier = new SafetyClassifier(this.env, { enableModelLayer: !quickCrisis && !deterministic });
     const context = historyFor(memory).map(t => ({ role: t.role, content: t.content, timestamp: t.timestamp,
       emotionValence: t.emotion?.valence }));
-    const [classification, knowledge] = await Promise.all([
-      classifier.classify(userInput, sessionId, context, signal),
-      quickCrisis ? Promise.resolve(undefined) : this.knowledge.analyze(userInput, signal),
+    const [classification, knowledge, inferred] = await Promise.all([
+      timed('safetyMs', classifier.classify(userInput, sessionId, context, signal)),
+      timed('retrievalMs', quickCrisis || deterministic ? Promise.resolve(undefined) : this.knowledge.analyze(userInput, signal, retrieval)),
+      timed('extractionMs', !quickCrisis && !deterministic && memory.settings.capture
+        ? inferCandidates(this.extractor, userInput, signal, memory.settings.recall ? memory.entries : []) : Promise.resolve([])),
     ]);
+    timings.preparationMs = Date.now()-started;
     const localEmotion = knowledge && knowledge.confidence >= .55 ? localEmotions[knowledge.emotion] : undefined;
     const recognized = localEmotion ? {
       ...this.emotionRecognizer.recognizeLocally(userInput), primaryEmotion: { ...this.emotionRecognizer.recognizeLocally(userInput).primaryEmotion, name: localEmotion.name },
@@ -95,6 +121,8 @@ export class ConversationOrchestrator {
     let memoryUsed = 0;
     let quality: { score: number; warnings: string[] } | undefined;
     let rag: EmotionRagContext | undefined;
+    let jointRetrieval: OrchestratorOutput['metadata']['retrieval'];
+    let continuity: ReturnType<typeof continuityView> | undefined;
     if (safety.shouldBlock) {
       decision = { nextState: 'SAFETY_PROTOCOL', empathyLevel: 'L1', shouldProgress: false,
         constraints: { empathyOnly: true, noProgression: true }, reason: '优先确认即时安全', transitionScore: 1 };
@@ -106,27 +134,55 @@ export class ConversationOrchestrator {
         response = cleared.reply + '\n\n' + response;
       }
     } else {
-      const extractor = new ChatGateway({ ...this.env, AI_TIMEOUT_MS: '10000' });
-      const inferred = memory.settings.capture && !memoryCommand(userInput) && !requestedGame(userInput)
-        ? await inferCandidates(extractor, userInput, signal, memory.settings.recall ? memory.entries : []) : [];
-      const prepared = prepareMemory(memory, userInput, { sessionId, turnId: String(state.turnCount + 1), now: Date.now() }, inferred);
+      const prepared = game || gameReply ? { profile:memory,reply:undefined } : prepareMemory(memory, userInput, origin, inferred, state.focusMemoryId);
       memory = prepared.profile;
+      if (state.reflection?.selected !== undefined && /这让我|这张|选项|联想到|it reminds|this makes/i.test(userInput)) {
+        for (const record of memory.entries) if (record.evidence.some(e=>e.sessionId===origin.sessionId && e.turnId===origin.turnId)) {
+          record.reflection={game:state.reflection.game,choice:state.reflection.selected};
+        }
+      }
       const history = historyFor(memory);
-      const recalled = retrieveMemories(memory, userInput, Date.now());
+      const semantic = validSemanticScores(knowledge?.memory_hits, retrieval.candidateIds, memory.entries);
+      const recalled = retrieveMemories(memory, userInput, Date.now(), 1800, semantic);
+      jointRetrieval = { mode: knowledge?.memory_hits ? 'semantic-hybrid' : 'lexical-fallback', expanded:retrieval.expanded,
+        candidates:retrieval.memories.length, recalled:recalled.length };
       memoryUsed = recalled.length;
+      continuity = continuityView(memory);
+      state.journeyStage = continuity.journey.stage;
+      state.activeExperiments = continuity.tasks.filter(t => !['completed','cancelled'].includes(t.progress)).map(t => t.id);
+      state.activeDirectionCards = continuity.tasks.filter(t => t.certainty === 'stated').map(t => t.id);
+      state.retrievedMemories = recalled.map(e => e.id);
+      state.userModelSnapshot = { revision:memory.revision,journeyStage:state.journeyStage };
+      state.focusMemoryId = focusedTask(userInput,memory.settings.recall ? memory.entries : []);
       const intent = await this.intentClassifier.classify(userInput, {
         recentHistory: history.map(t => t.content), currentState: state.currentState,
         emotion: { primary: emotion.primaryEmotion, intensity: emotion.intensity, valence: emotion.valence },
       });
+      const listen = /只想.{0,8}(?:说|倾诉|听)|(?:不要|不用|别|不想).{0,6}(?:建议|办法)|just (?:want|need).{0,30}(?:listen|vent)|(?:no|don't|do not|without).{0,12}advice/i.test(userInput);
+      const completion = continuity.tasks.some(t => t.progress === 'completed' && t.updatedAt === origin.now);
+      if (listen) intent.primaryIntent = 'L2.1_emotional_venting';
+      else if (completion || /复盘|回顾|进展|进度|review|progress/i.test(userInput)) intent.primaryIntent = 'L2.4_review_request';
+      const router = new IntentRouter(), route = router.makeRouteDecision(intent,state.currentState,emotion);
+      const communication = communicationGuidance(memory.settings.recall ? memory.entries : [],userInput);
+      // Explicit intent can select a phase; incidental keywords and old plans cannot push the user forward.
+      if (!deterministic && decision.nextState !== 'SESSION_CLOSE') {
+        const target = listen ? 'EMPATHY_PHASE' : completion || /复盘|回顾|进展|进度|review|progress/i.test(userInput) ? 'REVIEW_PHASE'
+          : /(?:我该|应该|下一步).{0,8}(?:怎么|做)|给.{0,5}建议|what should I do|next step|give me advice/i.test(userInput) ? 'ACTION_PHASE' : undefined;
+        if (target) decision = { ...decision,nextState:target,empathyLevel:target === 'ACTION_PHASE' ? 'L5' : target === 'REVIEW_PHASE' ? 'L4' : 'L2',
+          shouldProgress:target !== 'EMPATHY_PHASE',constraints:listen ? {empathyOnly:true,noActionQuestions:true} : {},reason:'按本轮明确意图路由' };
+      }
       if (prepared.reply) {
         response = prepared.reply;
+      } else if (gameReply) {
+        response = gameReply;
       } else if (decision.nextState === 'TAROT_ENTRY') {
         if ((state.tarotDraws || 0) >= 3) {
           response = '这次已经抽过三张牌了。我们可以从刚才有共鸣的部分继续聊，也可以换一个话题。';
         } else {
           state.tarotDraws = (state.tarotDraws || 0) + 1;
-          response = reflectionGame(requestedGame(userInput) || 'tarot', { userId, sessionId,
-            emotion: state.turnCount ? state.currentEmotion.primaryEmotion : emotion.primaryEmotion, intensity: emotion.intensity });
+          const draw = this.reflectionManager.start(game || 'tarot', { userId, sessionId,
+            emotion: state.turnCount ? state.currentEmotion.primaryEmotion : emotion.primaryEmotion, intensity: emotion.intensity },memory.contextEpoch);
+          response = draw.response; state.reflection = draw.session;
         }
       } else if (this.gateway.mode === 'demo') {
         response = this.demoReply(userInput, { ...state, recentHistory: history }, decision);
@@ -141,18 +197,26 @@ export class ConversationOrchestrator {
           `阶段约束：${JSON.stringify(decision.constraints)}。`,
           memoryPrompt(recalled, Date.now()),
           emotionRagPrompt(rag),
+          continuityPrompt(continuity, userInput,recalled),
+          communication.instruction,
+          this.empathyEngine.guidance(decision.empathyLevel,recognized.primaryEmotion.id),
+          `意图提示：${route.strategyHints.join('；')}。`,
+          reflectionPrompt(validReflection(state.reflection,memory.contextEpoch)),
         ].join('\n') }, ...history.map(t => ({ role: t.role, content: t.content })), { role: 'user', content: userInput }];
+        const generationStart = Date.now();
+        timings.contextMs = generationStart-started-timings.preparationMs;
         if (input.onDelta) {
           response = '';
           const filter = this.outputFilter.streaming(decision.empathyLevel);
           for await (const delta of this.gateway.stream(messages, { signal, maxTokens: 800 })) {
             response += delta;
             const visible = filter.feed(delta);
-            if (visible) await input.onDelta(visible);
+            if (visible) { timings.firstDeltaMs ??= Date.now()-started; await input.onDelta(visible); }
           }
           const remaining = filter.finish();
           if (remaining) await input.onDelta(remaining);
         } else response = await this.gateway.complete(messages, { signal });
+        timings.generationMs = Date.now()-generationStart;
       }
       const filtered = this.outputFilter.filterOutput(response, userInput, decision.empathyLevel, decision.shouldProgress);
       response = filtered.filteredResponse;
@@ -160,6 +224,8 @@ export class ConversationOrchestrator {
     }
     signal?.throwIfAborted();
     this.updateSessionState(state, decision, emotion, userInput, response);
+    state.memoryContextEpoch = memory.contextEpoch;
+    state.reflection = validReflection(state.reflection,memory.contextEpoch);
     state.recentHistory[state.recentHistory.length - 2].emotion = emotion;
     for (const turn of state.recentHistory.slice(-2)) turn.memoryEpoch = memory.contextEpoch;
     if (!input.memoryProfile) {
@@ -171,7 +237,8 @@ export class ConversationOrchestrator {
     if (this.sessionStates.size > 200) this.sessionStates.delete(this.sessionStates.keys().next().value!);
     return { response, updatedState: state, updatedMemory: memory, metadata: { state: decision.nextState, subState: decision.nextSubState,
       empathyLevel: decision.empathyLevel, emotion, safetyResult: safety, memoryUsed, memoryUpdated: memory.revision - originalMemory.revision,
-      processingTimeMs: Date.now() - started, mode: this.gateway.mode, quality, rag,
+      processingTimeMs: Date.now() - started, mode: this.gateway.mode, quality, rag, timings, retrieval:jointRetrieval,
+      continuity, reflection: safety.shouldBlock ? undefined : state.reflection,
       sources: (rag?.evidence || []).map(({ source, source_url, license, score }) => ({ source, source_url, license, score })),
       analysisSource: localEmotion ? 'local-trained-head' : 'local-lexicon', backend: this.gateway.mode === 'live' ? 'cloud' : 'demo' } };
   }
@@ -228,8 +295,6 @@ export class ConversationOrchestrator {
       empathyStrategyHistory: [],
       userModelSnapshot: {},
       retrievedMemories: [],
-      memoryOperationsPending: [],
-      kvCacheValid: false,
       recentHistory: [],
       activeDirectionCards: [],
       activeExperiments: [],
@@ -328,8 +393,7 @@ export class ConversationOrchestrator {
     state.stateHistory.push({ fromState, toState: 'SESSION_CLOSE', timestamp: new Date().toISOString(), reason: '会话结束', turnCount: state.turnCount });
     return state;
   }
-  checkSessionHealth(sessionId: string): { status: string; message?: string } {
-    const state = this.sessionStates.get(sessionId);
+  checkSessionHealth(sessionId: string, state = this.sessionStates.get(sessionId)): { status: string; message?: string } {
     if (!state) return { status: 'not_found' };
     if (Date.now() - Date.parse(state.lastActiveAt || state.startedAt) > this.config.inactivityTimeout * 1000) return { status: 'timeout' };
     if (Date.now() - Date.parse(state.startedAt) > this.config.sessionMaxDuration * 1000) return { status: 'duration_limit' };

@@ -10,6 +10,8 @@ import { sseEvent } from '../agents/_shared';
 import { SessionStore } from './session-store';
 import { LocalKnowledge } from '../lib/local-knowledge';
 import { eligible, MemoryError, memoryView, mutateMemory } from '../lib/memory';
+import { validReflection } from '../lib/tarot/reflection-session';
+import { continuityOpening } from '../lib/context/continuity';
 
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
 const ID = /^[a-zA-Z0-9_-]{16,100}$/;
@@ -27,6 +29,8 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
     ['/', { content: readFileSync(resolve(ROOT, 'dist/public/index.html')), type: 'text/html; charset=utf-8' }],
     ['/app.js', { content: readFileSync(resolve(ROOT, 'dist/public/app.js')), type: 'text/javascript; charset=utf-8' }],
     ['/sse.js', { content: readFileSync(resolve(ROOT, 'dist/public/sse.js')), type: 'text/javascript; charset=utf-8' }],
+    ['/continuity.js', { content: readFileSync(resolve(ROOT, 'dist/public/continuity.js')), type: 'text/javascript; charset=utf-8' }],
+    ['/corpus.js', { content: readFileSync(resolve(ROOT, 'dist/public/corpus.js')), type: 'text/javascript; charset=utf-8' }],
     ['/styles.css', { content: readFileSync(resolve(ROOT, 'dist/public/styles.css')), type: 'text/css; charset=utf-8' }],
   ]);
   const server = createServer(async (req, res) => {
@@ -48,7 +52,7 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
         json(res, 200, { ok: true, mode: gateway.mode, model: gateway.mode === 'live' ? gateway.model : null,
           persistence: env.SESSION_PERSISTENCE !== 'false', maxMessageLength: 2000, local: await knowledge.health() }); return;
       }
-      if (!['/api/session', '/api/chat', '/empathy-agent', '/api/stop', '/api/memories'].includes(url.pathname)) throw new HttpError(404, '接口不存在。');
+      if (!['/api/session', '/api/chat', '/empathy-agent', '/api/stop', '/api/memories','/api/corpus'].includes(url.pathname)) throw new HttpError(404, '接口不存在。');
       const cookie = req.headers.cookie?.split(';').map(x => x.trim()).find(x => x.startsWith('empathy-owner='))?.slice('empathy-owner='.length);
       const owner = cookie && /^[0-9a-f-]{36}$/.test(cookie) ? cookie : randomUUID();
       res.setHeader('Set-Cookie', `empathy-owner=${owner}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`);
@@ -56,6 +60,20 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
       if (typeof sessionId !== 'string' || !ID.test(sessionId)) throw new HttpError(400, '会话编号无效，请刷新页面。');
       const key = `${owner}:${sessionId}`;
       const ownerBusy = () => [...active.keys()].some(k => k.startsWith(owner + ':'));
+      if (url.pathname === '/api/corpus') {
+        if (!['GET','POST'].includes(req.method || '')) throw new HttpError(405,'请求方法不支持。');
+        let operation: {action:'rebuild'|'update'} | {scheduleHours:0|24|168} | undefined;
+        if (req.method === 'POST') {
+          if (!req.headers['content-type']?.toLowerCase().startsWith('application/json')) throw new HttpError(415,'请使用 JSON 请求。');
+          const body = await readBody(req) as any;
+          if (!body || typeof body !== 'object' || Object.keys(body).length !== 1) throw new HttpError(400,'语料操作格式无效。');
+          if (['rebuild','update'].includes(body.action)) operation={action:body.action};
+          else if ([0,24,168].includes(body.scheduleHours)) operation={scheduleHours:body.scheduleHours};
+          else throw new HttpError(400,'语料操作格式无效。');
+        }
+        try { json(res,200,await knowledge.maintenance(operation)); } catch { throw new HttpError(503,'语料服务未连接或已有更新任务，请稍后刷新状态。'); }
+        return;
+      }
       if (url.pathname === '/api/memories') {
         if (req.method === 'GET') { json(res, 200, memoryView(store.getMemory(owner), Date.now())); return; }
         if (req.method !== 'POST') throw new HttpError(405, '请求方法不支持。');
@@ -71,7 +89,7 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
         if (req.method === 'GET') {
           const state = store.get(owner, sessionId);
           const memory = store.getMemory(owner);
-          json(res, 200, { history: state?.recentHistory || [], turnCount: state?.turnCount || 0, state: state?.currentState || 'INIT', memories: memory.entries.filter(e => eligible(e, Date.now())).map(e => e.text), memory: memoryView(memory, Date.now()) }); return;
+          json(res, 200, { history: state?.recentHistory || [], turnCount: state?.turnCount || 0, state: state?.currentState || 'INIT', memories: memory.entries.filter(e => eligible(e, Date.now())).map(e => e.text), memory: memoryView(memory, Date.now()),reflection:validReflection(state?.reflection,memory.contextEpoch),opening:continuityOpening(memory),health:orchestrator.checkSessionHealth(key,state) }); return;
         }
         if (req.method === 'DELETE') {
           if (active.has(key)) throw new HttpError(409, '请先停止当前回复，再清除记录。');

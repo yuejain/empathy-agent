@@ -32,5 +32,7 @@ class ServiceTests(unittest.TestCase):
         for body in [None,[],{}, {'text':2},{'text':'x'*4001}]:
             if body is not None:self.assertEqual(self.request('/analyze',body)[0],400)
         self.assertEqual(self.request('/analyze',{'text':'hello'},{'Origin':'http://example.org'})[0],403)
+        for body in [{'text':'hello','memories':[{'id':'not-uuid','text':'x'}]},{'text':'hello','query':5},{'text':'hello','memories':[{}]*81}]:
+            self.assertEqual(self.request('/analyze',body)[0],400)
 
 if __name__=='__main__':unittest.main()

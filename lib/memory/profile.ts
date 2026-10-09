@@ -3,6 +3,7 @@ import { Candidate, DAY, MemoryOrigin, MemoryProfile, MemoryRecord, TTL, labels,
 import { ambiguous, eligible, fingerprint, historical, normalize, question, rejection, tentative } from './policy';
 import { classifyStatement, extractStatements } from './extractor';
 import { z } from 'zod';
+import { findFollowUp, isFollowUpReference, progressFrom, progressLabels, taskRecord } from './follow-up';
 
 export class MemoryError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -23,6 +24,7 @@ export function addCandidate(p: MemoryProfile, c: Candidate, origin: MemoryOrigi
     existing.updatedAt = now; existing.expiresAt = now + duration(c);
     existing.certainty = c.certainty || (c.certain ? 'stated' : 'inferred'); existing.source = source;
     existing.evidence = [...existing.evidence, evidence].slice(-3);
+    if (taskRecord(existing)) existing.progress = c.progress || progressFrom(c.text, c.kind);
     audit(p, 'refresh', existing.id, now); return existing;
   }
   const conflicts = pending ? [] : p.entries.filter(e => e.status === 'active' && (e.key === c.key || e.kind === c.kind && c.replaces?.includes(e.id)));
@@ -39,6 +41,7 @@ export function addCandidate(p: MemoryProfile, c: Candidate, origin: MemoryOrigi
     createdAt: now, updatedAt: now, expiresAt: now + duration(c), evidence: [evidence], supersedes: conflicts.slice(-10).map(e => e.id),
     reason: pending ? '旧记录或不明确内容，等待核对' : c.resolve ? '用户已完成或撤回' : '来自用户原话；不是客观核验结论',
   };
+  if (taskRecord(entry)) entry.progress = c.progress || progressFrom(c.text, c.kind);
   p.entries.push(entry); audit(p, pending ? 'propose' : c.resolve ? 'resolve' : 'write', entry.id, now); return entry;
 }
 export function clearMemories(p: MemoryProfile, now: number) {
@@ -49,7 +52,7 @@ export function memoryCommand(input: string): 'remember' | 'forget' | 'list' | u
   if (/^(?:请)?(?:忘记|清除)(?:所有|全部|这些)?(?:长期)?(?:记忆|记住的内容)[。！!]?$/u.test(input.trim()) || /^forget all memories[.!]?$/i.test(input)) return 'forget';
   if (/记住了什么|有哪些记忆|记得.*(?:什么|名字|叫)|我叫什么|what (?:do you remember|is my name)/i.test(input)) return 'list';
 }
-export function prepareMemory(profile: MemoryProfile, input: string, origin: MemoryOrigin, inferred: Candidate[] = []) {
+export function prepareMemory(profile: MemoryProfile, input: string, origin: MemoryOrigin, inferred: Candidate[] = [], focusId?: string) {
   const p = structuredClone(profile), command = memoryCommand(input); let reply: string | undefined;
   if (command === 'forget') {
     clearMemories(p, origin.now);
@@ -69,6 +72,22 @@ export function prepareMemory(profile: MemoryProfile, input: string, origin: Mem
   } else if (p.settings.capture) {
     // Deterministic extraction wins for spans it recognizes; semantic extraction expands coverage.
     const direct = extractStatements(input);
+    const target = findFollowUp(input, p.entries, focusId);
+    if (target) {
+      const progress = progressFrom(input, target.kind);
+      const linked: Candidate = { kind: target.kind, key: target.key, text: input, quote: input, certain: true, certainty: target.certainty,
+        resolve: progress === 'completed' || progress === 'cancelled', progress };
+      // A short referential update is stored together with the original task, with evidence for each.
+      if (isFollowUpReference(input)) {
+        target.progress = progress; target.status = linked.resolve ? 'resolved' : 'active'; target.updatedAt = origin.now;
+        target.evidence = [...target.evidence, { sessionId: origin.sessionId, turnId: origin.turnId, quote: input, at: origin.now }].slice(-3);
+        target.expiresAt = origin.now + TTL[target.kind];
+        p.contextEpoch++; audit(p, 'progress', target.id, origin.now);
+      } else {
+        const idx = direct.findIndex(c => c.text === input.replace(/[。.!；;]+$/u,''));
+        if (idx >= 0) direct[idx] = linked; else direct.push(linked);
+      }
+    }
     const candidates = [...direct.map(d => ({ ...d, replaces: inferred.find(c => c.kind === d.kind && c.key === d.key)?.replaces })), ...inferred.filter(c => !direct.some(d => d.kind === c.kind && d.key === c.key))];
     for (const c of candidates.slice(0, 8)) {
       try { addCandidate(p, c, origin, c.extracted ? 'extracted' : 'statement'); }
@@ -79,9 +98,10 @@ export function prepareMemory(profile: MemoryProfile, input: string, origin: Mem
 }
 
 const mutationSchema = z.object({
-  revision: z.number().int().nonnegative(), action: z.enum(['add', 'edit', 'confirm', 'resolve', 'delete', 'clear', 'settings']),
+  revision: z.number().int().nonnegative(), action: z.enum(['add', 'edit', 'confirm', 'resolve', 'progress', 'delete', 'clear', 'settings']),
   id: z.string().uuid().optional(), text: z.string().min(1).max(500).optional(), kind: kindSchema.optional(),
   capture: z.boolean().optional(), recall: z.boolean().optional(),
+  progress: z.enum(['planned','in_progress','blocked','completed','cancelled']).optional(), dueAt: z.number().finite().nonnegative().nullable().optional(),
 }).strict();
 export function mutateMemory(profile: MemoryProfile, body: unknown, origin: MemoryOrigin): MemoryProfile {
   const parsed = mutationSchema.safeParse(body); if (!parsed.success) throw new MemoryError('记忆操作格式无效。');
@@ -101,7 +121,14 @@ export function mutateMemory(profile: MemoryProfile, body: unknown, origin: Memo
   } else {
     const item = p.entries.find(e => e.id === op.id); if (!item) throw new MemoryError('记忆不存在。', 404);
     if (op.action === 'delete') { p.entries = p.entries.filter(e => e.id !== item.id); p.contextEpoch++; audit(p, 'delete', item.id, now); }
-    else if (op.action === 'resolve') { item.status = 'resolved'; item.reason = '用户手动结束或撤回'; item.updatedAt = now; p.contextEpoch++; audit(p, 'resolve', item.id, now); }
+    else if (op.action === 'resolve' || op.action === 'progress') {
+      if (op.action === 'progress' && (!taskRecord(item) || !op.progress || !['active','resolved'].includes(item.status))) throw new MemoryError('请选择有效行动或决策及其进度。');
+      item.progress = op.progress || 'cancelled'; item.status = ['completed','cancelled'].includes(item.progress) ? 'resolved' : 'active';
+      if (op.dueAt !== undefined) item.dueAt = op.dueAt === null ? undefined : op.dueAt;
+      item.reason = '用户手动更新进度'; item.updatedAt = now; item.expiresAt = now + TTL[item.kind];
+      item.evidence = [...item.evidence, { sessionId: origin.sessionId, turnId: origin.turnId, quote: `用户在管理面板将此项标记为：${progressLabels[item.progress]}`, at: now }].slice(-3);
+      p.contextEpoch++; audit(p, 'progress', item.id, now);
+    }
     else {
       const text = op.action === 'edit' ? op.text : item.text;
       if (!text) throw new MemoryError('请填写更正内容。');

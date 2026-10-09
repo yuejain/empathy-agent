@@ -4,7 +4,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light"><title>留白 · 共情陪伴</title>
   <link rel="stylesheet" href="/styles.css">
-  <script src="/sse.js" defer></script><script src="/app.js" defer></script>
+  <script src="/sse.js" defer></script><script src="/continuity.js" defer></script><script src="/app.js" defer></script><script src="/corpus.js" defer></script>
 </head>
 <body>
   <div class="shell">
@@ -22,7 +22,7 @@
     <main>
       <header class="topbar"><div><span class="status-dot"></span>一个可以慢下来聊聊的地方</div><span class="mode" id="mode">连接中</span></header>
       <div class="notice" id="modeNotice" role="status">正在检查服务状态…</div>
-      <div class="model-tools"><span id="replyModel">云端回复</span><span id="knowledgeStatus">正在连接本地情绪 RAG…</span><button type="button" id="openMemory" class="secondary" disabled>长期记忆</button></div>
+      <div class="model-tools"><span id="replyModel">云端回复</span><span id="knowledgeStatus">正在连接本地情绪 RAG…</span><button type="button" id="openMemory" class="secondary" disabled>长期记忆</button><button type="button" id="openCorpus" class="text-button">语料库</button></div>
       <div class="chat-scroll" id="chatScroll">
         <section class="welcome" id="welcome"><span class="welcome-symbol" aria-hidden="true">✳</span><span class="eyebrow">此刻，留一点空白</span><h1>今天，你的心情怎么样？</h1><p>有些感受不容易说清。<br>你可以从最近发生的一件小事开始。</p>
           <div class="suggestions"><button data-prompt="最近有点迷茫，不知道该往哪里走。"><span>☁</span>最近有点迷茫<small>一起梳理那些说不清的感受</small></button><button data-prompt="我今天只想找个人说说，先不用给建议。"><span>☕</span>想找个人说说<small>先听你说，不急着找答案</small></button><button data-prompt="我想抽一张牌，做个联想练习。"><span>✧</span>从一张牌开始<small>用联想打开一个话题</small></button></div>
@@ -31,7 +31,8 @@
         <div id="pending" class="pending" hidden>◒ 正在整理回复…</div>
       </div>
       <div class="composer-area">
-        <div class="play-tools"><label for="game">联想练习</label><select id="game"><option value="tarot">塔罗 · 正逆位</option><option value="iching">周易 · 六爻意象</option><option value="needs">情绪 · 需要卡</option></select><button type="button" class="text-button" id="playGame" disabled>开始练习 ↗</button></div>
+        <div id="reflectionChoices" class="reflection-choices" aria-label="联想练习选项" hidden></div>
+        <div class="play-tools"><label for="game">联想练习</label><select id="game"><option value="tarot">塔罗 · 正逆位</option><option value="iching">周易 · 六爻意象</option><option value="needs">情绪 · 需要卡</option><option value="image">意象 · 文字画面</option><option value="scenario">场景 · 生活片段</option><option value="keyword">关键词 · 由词出发</option></select><button type="button" class="text-button" id="playGame" disabled>开始练习 ↗</button></div>
         <div id="error" class="error" role="alert" hidden></div>
         <form id="chatForm"><label class="sr-only" for="userInput">说说你的想法</label><textarea id="userInput" rows="2" maxlength="2000" placeholder="想到什么，就从这里说起…" disabled></textarea><div class="composer-bottom"><span id="inputHint">Enter 发送 · Shift + Enter 换行</span><button type="button" class="secondary" id="stopButton" hidden>停止回复</button><button type="submit" id="sendButton" disabled>发送 ↑</button></div></form>
         <p class="disclaimer">AI 陪伴不能替代专业心理咨询或医疗服务。紧急危险请联系当地急救；中国大陆可拨打 120 / 110，心理援助 12356。</p>
@@ -44,6 +45,7 @@
     <div class="memory-settings"><label><input type="checkbox" id="captureMemory"> 自动记忆</label><label><input type="checkbox" id="recallMemory"> 回复时参考记忆</label></div>
     <p class="memory-hint">关闭自动记忆后仍可手动添加。删除或更正后，旧聊天仍可查看，但不会继续作为模型上下文。</p>
     <div id="memoryError" class="error" role="alert" hidden></div>
+    <details class="continuity-panel" open><summary>近况、跟进与情绪记录</summary><div id="continuityView"></div></details>
     <form id="memoryForm">
       <label for="memoryKind">类别</label><select id="memoryKind"><option value="emotion">当前情绪</option><option value="activity">正在做的事</option><option value="decision">计划与决策</option><option value="profile">稳定背景</option></select>
       <label for="memoryText">记忆内容</label><textarea id="memoryText" maxlength="500" rows="2" placeholder="例如：我正在准备毕业论文，最近有点焦虑。" required></textarea>
@@ -52,6 +54,14 @@
     <div class="memory-toolbar"><label for="memoryFilter" class="sr-only">记忆筛选</label><select id="memoryFilter"><option value="active">当前有效</option><option value="pending">待核对</option><option value="history">已结束 / 被替代 / 过期</option><option value="all">全部</option></select><span id="memorySummary" role="status"></span><button id="refreshMemory" type="button" class="text-button">刷新</button></div>
     <div id="memoryList" aria-label="记忆列表"></div>
     <div class="memory-footer"><p>记忆保存在本机；使用云端模型时，相关记忆会随请求发送给已配置的服务。清除浏览器 Cookie 后无法自动找回该档案。</p><button type="button" id="clearMemory" class="text-button danger">清空全部长期记忆</button></div>
+  </dialog>
+  <dialog id="corpusDialog" aria-labelledby="corpusTitle">
+    <div class="memory-heading"><h2 id="corpusTitle">公开语料库</h2><button type="button" id="closeCorpus" class="secondary">关闭</button></div>
+    <p class="memory-intro">从配置好的公开来源更新语料，清洗后重建检索库。聊天与个人记忆不会加入公开语料库。</p>
+    <p id="corpusStatus" role="status">正在读取状态…</p><p id="corpusError" class="error" hidden></p>
+    <div class="memory-actions"><button id="updateCorpus" class="secondary">抓取并更新</button><button id="rebuildCorpus" class="secondary">重建现有语料索引</button><button id="refreshCorpus" class="text-button">刷新状态</button></div>
+    <label for="corpusSchedule">自动更新</label><select id="corpusSchedule"><option value="0">关闭</option><option value="24">每 24 小时</option><option value="168">每 7 天</option></select>
+    <p class="memory-hint">自动更新仅在本地服务运行时执行。更新完成后新索引自动生效；失败时继续使用上一版。部分来源失败会保留其已有快照。</p>
   </dialog>
 </body>
 </html>

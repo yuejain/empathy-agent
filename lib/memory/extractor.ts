@@ -13,7 +13,13 @@ export function classifyStatement(raw: string, forced?: MemoryKind): Candidate {
   let kind: MemoryKind = 'profile', key = 'profile:' + fingerprint(text).slice(0, 110), resolve = false;
   let match: RegExpMatchArray | null;
   let certain = false;
-  if ((match = base.match(/^(?:我(?:现在|目前)?叫|我的名字(?:叫|是)|my name is |call me )(.{1,40})$/i))) {
+  if (/^(?:请)?(?:说话|回复)?(?:直接一点|简短一点|详细一点|温柔一点|别总问问题|不要总问问题|可以问问题|你可以提问|恢复提问)|^(?:please )?(?:be (?:direct|brief|gentle)|more detail|stop asking questions|you can ask questions)/i.test(base)) {
+    key = /问问题|提问|ask(?:ing)? questions/i.test(base) ? 'profile:communication:questions' : 'profile:communication:style'; certain = true;
+  } else if (/^(?:我(?:已经)?(?:确定了|明确了|想清楚了)方向|I have clarified my direction)/i.test(base)) {
+    key = 'profile:direction'; certain = true;
+  } else if (/^(?:我(?:喜欢|不喜欢|偏好)|I (?:prefer|dislike)).{0,12}(?:塔罗|周易|需要卡|意象|场景|关键词|tarot|iching|scenario|imagery)/i.test(base)) {
+    key = 'profile:entry'; certain = true;
+  } else if ((match = base.match(/^(?:我(?:现在|目前)?叫|我的名字(?:叫|是)|my name is |call me )(.{1,40})$/i))) {
     key = 'profile:name'; certain = true;
   } else if (/^(?:我(?:现在|今天|此刻|目前|最近)?(?:感觉|感到|心情|情绪|很|有点|特别|非常|不再|已经不|不太|不|担心|焦虑)|I (?:am|feel|am feeling|no longer feel)|I'm)/i.test(base) && emotions.test(base)) {
     kind = 'emotion'; key = 'emotion:current'; certain = true;
@@ -31,6 +37,7 @@ export function classifyStatement(raw: string, forced?: MemoryKind): Candidate {
     key = 'profile:preference:' + topic(base.replace(/^(?:我不?喜欢|I (?:like|dislike|prefer))\s*/i, '')); certain = true;
   }
   if (forced && forced !== kind) { kind = forced; key = forced === 'emotion' ? 'emotion:current' : forced + ':' + fingerprint(text).slice(0, 110); }
+  if (key === 'activity:' || key === 'decision:') certain = false;
   return { kind, key, text, quote: raw.trim(), certain: certain && !ambiguous(base) && !historical(base) && !question(base), resolve, certainty: tentative(base) ? 'tentative' : 'stated' };
 }
 
@@ -82,7 +89,7 @@ export function extractStatements(input: string): Candidate[] {
   for (const statement of statements.slice(0, 12)) {
     if (statement.length > 300 || rejection(statement)) continue;
     const candidate = classifyStatement(statement);
-    if (candidate.certain && /^(?:我|今天我|最近我|现在我|目前我|此刻我|其实我|更正|实际上我|I\b|I'm|I've|my name|Actually)/i.test(statement)) result.push(candidate);
+    if (candidate.certain && (/^(?:我|今天我|最近我|现在我|目前我|此刻我|其实我|更正|实际上我|I\b|I'm|I've|my name|Actually)/i.test(statement) || candidate.key.startsWith('profile:communication:'))) result.push(candidate);
   }
   return result.slice(0, 6);
 }

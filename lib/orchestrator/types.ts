@@ -207,6 +207,9 @@ export interface SessionState {
   lastActiveAt?: string;
   explicitMemories?: string[];
   tarotDraws?: number;
+  memoryContextEpoch?: number;
+  focusMemoryId?: string;
+  reflection?: import('../tarot/reflection-session').ReflectionSession;
 
   // 状态机状态
   currentState: GlobalState;
@@ -227,9 +230,7 @@ export interface SessionState {
 
   // 记忆相关
   userModelSnapshot: Record<string, unknown>;
-  retrievedMemories: unknown[];
-  memoryOperationsPending: unknown[];
-  kvCacheValid: boolean;
+  retrievedMemories: string[];
 
   // 塔罗相关
   tarotState?: TarotSubState;
@@ -243,8 +244,8 @@ export interface SessionState {
     subState: ExploreSubState;
     hypothesis?: string;
   };
-  activeDirectionCards: unknown[];
-  activeExperiments: unknown[];
+  activeDirectionCards: string[];
+  activeExperiments: string[];
 
   // 元数据
   lastStateChangeAt: string;
@@ -285,6 +286,10 @@ export interface OrchestratorOutput {
     analysisSource?: string;
     backend?: 'cloud' | 'demo';
     rag?: import('../emotion-rag').EmotionRagContext;
+    timings?: Record<string,number>;
+    retrieval?: { mode:'semantic-hybrid' | 'lexical-fallback'; expanded:boolean; candidates:number; recalled:number };
+    continuity?: ReturnType<typeof import('../context/continuity').continuityView>;
+    reflection?: import('../tarot/reflection-session').ReflectionSession;
   };
 }
 
@@ -317,8 +322,6 @@ export interface OrchestratorConfig {
   emotionDecliningThreshold: number;
   /** 连续高情绪轮次阈值 */
   consecutiveHighEmotionThreshold: number;
-  /** 是否启用 KV Cache */
-  enableKvCache: boolean;
 }
 
 /** 默认配置 */
@@ -331,5 +334,4 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
   emotionIntensityThreshold: 0.7,
   emotionDecliningThreshold: 0.15,
   consecutiveHighEmotionThreshold: 3,
-  enableKvCache: true,
 };

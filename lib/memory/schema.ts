@@ -11,6 +11,8 @@ export const entrySchema = z.object({
   certainty: z.enum(['stated', 'inferred', 'tentative']),
   createdAt: time, updatedAt: time, expiresAt: time, reason: z.string().max(150),
   evidence: z.array(evidenceSchema).min(1).max(3), supersedes: z.array(z.string().uuid()).max(10).default([]),
+  progress: z.enum(['planned', 'in_progress', 'blocked', 'completed', 'cancelled']).optional(), dueAt: time.optional(),
+  reflection: z.object({game:z.enum(['tarot','iching','needs','image','scenario','keyword']),choice:z.number().int().min(0).max(2)}).strict().optional(),
 }).strict();
 export type MemoryRecord = z.infer<typeof entrySchema>;
 export const profileSchema = z.object({
@@ -21,7 +23,7 @@ export const profileSchema = z.object({
 }).strict();
 export type MemoryProfile = z.infer<typeof profileSchema>;
 export interface MemoryOrigin { sessionId: string; turnId: string; now: number }
-export interface Candidate { kind: MemoryKind; key: string; text: string; quote?: string; certain: boolean; resolve?: boolean; certainty?: MemoryRecord['certainty']; extracted?: boolean; replaces?: string[] }
+export interface Candidate { kind: MemoryKind; key: string; text: string; quote?: string; certain: boolean; resolve?: boolean; certainty?: MemoryRecord['certainty']; extracted?: boolean; replaces?: string[]; progress?: MemoryRecord['progress'] }
 export const labels: Record<MemoryKind, string> = { emotion: '当前情绪', activity: '正在做的事', decision: '计划与决策', profile: '稳定背景' };
 export const DAY = 86400000;
 export const TTL: Record<MemoryKind, number> = { emotion: 6 * 3600000, activity: 30 * DAY, decision: 90 * DAY, profile: 365 * DAY };

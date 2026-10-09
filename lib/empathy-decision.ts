@@ -203,6 +203,11 @@ export const SPECIAL_EMOTION_STRATEGIES: Record<string, {
 };
 
 export class EmpathyDecisionEngine {
+  /** The orchestrator owns phase/risk decisions; reuse one strategy table without a second competing state machine. */
+  guidance(level: EmpathyLevel, emotionId: string): string {
+    const strategy = EMPATHY_STRATEGIES[level], special = SPECIAL_EMOTION_STRATEGIES[emotionId];
+    return `回应策略：${strategy.name}；${strategy.techniques.slice(0,2).join('、')}。${special ? special.strategy : ''} 用户当前请求和已选择的回应方向优先。`;
+  }
   // 根据情绪状态选择共情层级
   selectEmpathyLevel(
     emotionResult: EmotionRecognitionResult,

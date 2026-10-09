@@ -6,7 +6,9 @@ const hitSchema = z.object({ id: z.string().max(200), text: z.string().max(4000)
   source: z.string().max(200), source_url: z.string().url().max(1000), license: z.string().max(200), language: z.string().max(16),
   emotions: z.array(emotionLabel).max(8), category: z.string().max(100), score });
 const analysisSchema = z.object({ emotion: emotionLabel, confidence: score,
-  scores: z.record(emotionLabel, score), label_source: z.literal('local-trained-head'), hits: z.array(hitSchema).max(3), index_size: z.number().int().nonnegative() })
+  scores: z.record(emotionLabel, score), label_source: z.literal('local-trained-head'), hits: z.array(hitSchema).max(3), index_size: z.number().int().nonnegative(),
+  memory_hits: z.array(z.object({id:z.string().uuid(),score:z.number().finite().min(-1).max(1)})).max(80).optional(),
+  timings: z.object({encodeMs:z.number().nonnegative(),searchMs:z.number().nonnegative()}).optional() })
   .refine(data => {
     const primary = data.scores[data.emotion];
     return primary !== undefined && Math.abs(primary - data.confidence) <= .0001 && Object.values(data.scores).every(value => value! <= primary + .0001);
@@ -38,11 +40,19 @@ export class LocalKnowledge {
       return { available: data.ok === true && data.classifier === true, role: 'emotion-rag', indexDocuments: Number(data.index_documents) || 0 };
     } catch { return { available: false, role: 'emotion-rag', indexDocuments: 0 }; }
   }
-  async analyze(text: string, signal?: AbortSignal): Promise<KnowledgeResult | undefined> {
+  async maintenance(operation?: {action:'rebuild'|'update'} | {scheduleHours:0|24|168}) {
+    if (!this.url) throw new Error('本地语料服务未连接。');
+    const response = await fetch(this.url+'/maintenance',{method:operation ? 'POST' : 'GET',redirect:'error',
+      headers:operation ? {'Content-Type':'application/json'} : {},body:operation ? JSON.stringify(operation) : undefined,signal:AbortSignal.timeout(3000)});
+    if (!response.ok) throw new Error(response.status === 409 ? '已有语料更新任务在执行。' : '语料管理服务暂不可用。');
+    return z.object({status:z.enum(['idle','running','success','partial','failed','interrupted']),phase:z.enum(['idle','queued','collect','index']),
+      scheduleHours:z.number().int().min(0).max(168),nextRunAt:z.number().nullable(),startedAt:z.string().optional(),finishedAt:z.string().nullable().optional()}).parse(await response.json());
+  }
+  async analyze(text: string, signal?: AbortSignal, retrieval?: { query:string; memories:{id:string;text:string}[] }): Promise<KnowledgeResult | undefined> {
     if (!this.url) return;
     try {
       const response = await fetch(this.url + '/analyze', { method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }), signal: AbortSignal.any([AbortSignal.timeout(10000), ...(signal ? [signal] : [])]) });
+        body: JSON.stringify({ text, ...(retrieval ? {query:retrieval.query,memories:retrieval.memories} : {}) }), signal: AbortSignal.any([AbortSignal.timeout(10000), ...(signal ? [signal] : [])]) });
       if (!response.ok) return;
       return analysisSchema.parse(await response.json());
     } catch { signal?.throwIfAborted(); return; }

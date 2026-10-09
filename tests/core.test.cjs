@@ -49,7 +49,7 @@ test('local emotion recognition recognizes phrases and unknown inputs stay neutr
 });
 test('direct conversation, exploration, action, review and goodbye are reachable', async () => {
   const o = new ConversationOrchestrator({APP_MODE:'demo'}); let state;
-  for (const [input, expected] of [['你好','EMPATHY_PHASE'],['下一步怎么做','EXPLORE_PHASE'],['我愿意试试','ACTION_PHASE'],['我已经完成了','REVIEW_PHASE'],['再见','SESSION_CLOSE']]) {
+  for (const [input, expected] of [['你好','EMPATHY_PHASE'],['我想了解这个问题，继续梳理','EXPLORE_PHASE'],['我愿意试试','ACTION_PHASE'],['我已经完成了','REVIEW_PHASE'],['再见','SESSION_CLOSE']]) {
     const r = await o.processTurn({userId:'u',sessionId:'s',userInput:input,sessionState:state}); state=r.updatedState; assert.equal(r.metadata.state,expected);
   }
   assert.equal(state.turnCount,5);

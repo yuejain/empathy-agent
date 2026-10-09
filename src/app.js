@@ -20,6 +20,7 @@ function setBusy(busy) {
   $('newChat').disabled = $('clearChat').disabled = $('exportChat').disabled = !ready || busy;
   $('playGame').disabled = $('game').disabled = !ready || busy;
   $('openMemory').disabled = !ready || busy;
+  $('reflectionChoices').querySelectorAll('button').forEach(b=>{b.disabled=!ready || busy;});
   document.querySelectorAll('[data-prompt]').forEach(b => b.disabled = !ready || busy);
   $('stopButton').hidden = !busy; $('pending').hidden = !busy;
 }
@@ -48,6 +49,10 @@ async function loadSession() {
   $('turnCount').textContent = data.turnCount;
   $('phase').textContent = phaseNames[data.state] || data.state;
   $('memoryCount').textContent = data.memories.length;
+  renderReflection(data.reflection);
+  const preference=data.memory?.continuity?.preferredEntry;
+  if(!data.history.length && preference && preference!=='direct')$('game').value=preference;
+  const opening=document.querySelector('#welcome > p');if(opening && data.opening)opening.textContent=data.opening;
 }
 async function initialize() {
   try {
@@ -94,6 +99,7 @@ async function sendMessage() {
         if (partialRow) partialRow.querySelector('.message-content').textContent = data.content;
         else addMessage('assistant', data.content, data.mode === 'demo' ? '本地演示回复' : '');
         const row = partialRow || $('messages').lastElementChild;
+        renderReflection(data.reflection);
         if (data.rag?.direction) {
           const note = document.createElement('details'); note.className = 'source-note emotion-note';
           const title = document.createElement('summary'); title.textContent = `本轮情绪参考 · ${data.rag.direction.label}`; note.appendChild(title);
@@ -102,6 +108,7 @@ async function sendMessage() {
           text.textContent = fallback ? '本地 RAG 当前不可用，云端使用当前原话和基础情绪线索作答，本轮未引用检索语料。'
             : `${data.rag.emotion.primary}（${data.rag.emotion.uncertain ? '不确定线索，请以你的感受为准' : '模型线索，非诊断'}）。${data.rag.status === 'no_matches' ? '未找到合适语料。' : `参考 ${data.rag.evidenceCount} 条语料。`}`;
           note.appendChild(text); row.querySelector('.message-content').appendChild(note);
+          if(data.retrieval){const retrieval=document.createElement('p');retrieval.textContent=`个人记忆：${data.retrieval.mode==='semantic-hybrid'?'语义与词项联合检索':'词项检索'}，参考 ${data.retrieval.recalled} 条${data.retrieval.expanded?'；已结合前文理解续聊':''}。`;note.appendChild(retrieval);}
           if (fallback) $('knowledgeStatus').textContent = '本轮 RAG 不可用 · 已使用基础情绪线索';
           else $('knowledgeStatus').textContent = '本地情绪 RAG 已参与本轮回复';
         }
@@ -154,7 +161,7 @@ async function sendMessage() {
   }
 }
 $('chatForm').addEventListener('submit', event => { event.preventDefault(); sendMessage(); });
-$('playGame').addEventListener('click', () => { $('userInput').value = {tarot:'我想抽一张塔罗牌，做正逆位联想练习。',iching:'我想做周易六爻意象联想练习。',needs:'我想抽一张情绪需要卡。'}[$('game').value]; sendMessage(); });
+$('playGame').addEventListener('click', () => { $('userInput').value = {tarot:'我想抽一张塔罗牌，做正逆位联想练习。',iching:'我想做周易六爻意象联想练习。',needs:'我想抽一张情绪需要卡。',image:'我想做意象联想练习。',scenario:'我想做场景联想练习。',keyword:'我想做关键词联想练习。'}[$('game').value]; sendMessage(); });
 $('userInput').addEventListener('input', () => { $('sendButton').disabled = !ready || !!controller || !$('userInput').value.trim(); });
 $('userInput').addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendMessage(); }
@@ -200,6 +207,7 @@ function renderMemory() {
   $('recallMemory').checked = memoryData.settings.recall;
   $('memoryCount').textContent = memoryData.activeCount;
   $('memorySummary').textContent = `${memoryData.activeCount} 条有效 · ${memoryData.pendingCount} 条待核对`;
+  renderContinuity(memoryData.continuity);
   $('memoryList').replaceChildren();
   const filter = $('memoryFilter').value;
   const items = memoryData.entries.filter(e => filter === 'all' || filter === 'history' && !['active', 'pending'].includes(e.status) || e.status === filter);
@@ -217,6 +225,16 @@ function renderMemory() {
     if (item.status === 'pending' || item.status === 'expired') action('确认仍然适用', () => changeMemory({ action: 'confirm', id: item.id }));
     if (item.status === 'active' && ['activity', 'decision'].includes(item.kind)) action('结束 / 撤回', () => changeMemory({ action: 'resolve', id: item.id }));
     action('删除', () => changeMemory({ action: 'delete', id: item.id }));
+    if(['activity','decision'].includes(item.kind) && ['active','resolved'].includes(item.status)) {
+      const controls=document.createElement('div');controls.className='progress-controls';
+      const select=document.createElement('select');select.setAttribute('aria-label','事项进度');
+      for(const [value,label] of Object.entries(progressNames)){const option=document.createElement('option');option.value=value;option.textContent=label;select.appendChild(option);}
+      select.value=item.progress || 'in_progress';
+      const due=document.createElement('input');due.type='date';due.setAttribute('aria-label','目标日期');
+      if(item.dueAt){const date=new Date(item.dueAt);due.value=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
+      const update=()=>changeMemory({action:'progress',id:item.id,progress:select.value,dueAt:due.value?new Date(due.value+'T23:59:59').getTime():null});
+      select.addEventListener('change',update);due.addEventListener('change',update);controls.append(select,due);actions.appendChild(controls);
+    }
     card.append(badge, text, time, details, actions); $('memoryList').appendChild(card);
   }
 }
