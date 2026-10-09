@@ -9,7 +9,7 @@ test('chat, persistence, memory, clear, and literal HTML rendering', async ({ pa
   await expect(page.getByRole('button', { name: '发送 ↑' })).toBeDisabled();
   await page.getByRole('textbox').fill('记住：我叫小林');
   await page.getByRole('button', { name: '发送 ↑' }).click();
-  await expect(page.locator('.message.assistant')).toContainText('已在本会话中记住');
+  await expect(page.locator('.message.assistant')).toContainText('已保存为跨会话记忆');
   await expect(page.locator('#memoryCount')).toHaveText('1');
   await page.reload();
   await expect(page.locator('.message')).toHaveCount(2);

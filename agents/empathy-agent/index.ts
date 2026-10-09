@@ -14,7 +14,7 @@ export function responseEvent(result: OrchestratorOutput) {
     emotion: { primary: m.emotion.primaryEmotion, intensity: m.emotion.intensity, valence: m.emotion.valence, trajectory: m.emotion.trajectory },
     empathy: { level: m.empathyLevel }, safety: { isSafe: !m.safetyResult.shouldBlock, riskLevel: m.safetyResult.riskLevel },
     state: { current: m.state, phase: phases[m.state] || m.state, turnCount: result.updatedState.turnCount },
-    memory: { memoriesUsed: m.memoryUsed, processingTimeMs: m.processingTimeMs }, mode: m.mode,
+    memory: { memoriesUsed: m.memoryUsed, memoriesUpdated: m.memoryUpdated, processingTimeMs: m.processingTimeMs }, mode: m.mode,
     sources: m.sources || [], analysisSource: m.analysisSource, backend: m.backend,
   };
 }

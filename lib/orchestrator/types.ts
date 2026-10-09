@@ -188,6 +188,7 @@ export interface EmotionState {
 
 /** 对话轮次 */
 export interface Turn {
+  memoryEpoch?: number;
   role: 'user' | 'assistant';
   content: string;
   state: GlobalState;
@@ -254,6 +255,7 @@ export interface SessionState {
 
 /** 编排器输入 */
 export interface OrchestratorInput {
+  memoryProfile?: import('../memory').MemoryProfile;
   userId: string;
   sessionId: string;
   userInput: string;
@@ -265,6 +267,7 @@ export interface OrchestratorInput {
 
 /** 编排器输出 */
 export interface OrchestratorOutput {
+  updatedMemory: import('../memory').MemoryProfile;
   response: string;
   updatedState: SessionState;
   metadata: {
@@ -274,6 +277,7 @@ export interface OrchestratorOutput {
     emotion: EmotionState;
     safetyResult: SafetyResult;
     memoryUsed: number;
+    memoryUpdated: number;
     processingTimeMs: number;
     mode?: 'demo' | 'live';
     quality?: { score: number; warnings: string[] };

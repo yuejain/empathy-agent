@@ -11,7 +11,7 @@ function modelNotice() {
   $('modeNotice').textContent = $('backend').value === 'local'
     ? '本地小模型（实验版）：消息在本机处理。中文情绪标注和训练样本有限，回复可能不准确，可随时切换模型。'
     : mode === 'demo' ? '当前为本地规则演示，回复由模板生成。'
-    : `使用模型 ${cloudModel}。消息、本会话上下文及检索片段会交给你配置的模型服务处理。`;
+    : `使用模型 ${cloudModel}。消息、近期上下文、相关长期记忆及检索片段会交给你配置的模型服务处理。`;
 }
 $('backend').addEventListener('change', () => { try { localStorage.setItem('empathy-backend', $('backend').value); } catch {} modelNotice(); });
 const phaseNames = { INIT: '开始倾听', EMPATHY_PHASE: '倾听与共情', EXPLORE_PHASE: '一起梳理', ACTION_PHASE: '尝试小步行动', REVIEW_PHASE: '回顾与整理', TAROT_ENTRY: '卡牌联想', SESSION_CLOSE: '暂时告一段落', SAFETY_PROTOCOL: '安全支持' };
@@ -22,6 +22,7 @@ function setBusy(busy) {
   $('sendButton').disabled = !ready || busy || !$('userInput').value.trim();
   $('newChat').disabled = $('clearChat').disabled = $('exportChat').disabled = !ready || busy;
   $('backend').disabled = $('playGame').disabled = $('game').disabled = !ready || busy;
+  $('openMemory').disabled = !ready || busy;
   document.querySelectorAll('[data-prompt]').forEach(b => b.disabled = !ready || busy);
   $('stopButton').hidden = !busy; $('pending').hidden = !busy;
 }
@@ -65,7 +66,7 @@ async function initialize() {
       ? '当前为本地规则演示，回复由模板生成。配置本地 .env 并重启服务后，可使用真实模型对话。'
       : `使用模型 ${health.model}。发送的消息及本会话上下文会交给你配置的模型服务处理。`;
     modelNotice();
-    $('storageNote').textContent = health.persistence ? '最近 10 轮与明确保存的记忆存于本机。7 天未活动后清理。' : '仅存于本次服务内存，服务重启后清除。';
+    $('storageNote').textContent = health.persistence ? '聊天保留最近 10 轮，7 天未活动后清理。长期记忆独立保存在本机，按类别更新和过期。' : '聊天与长期记忆仅存于本次服务内存，服务重启后清除。';
     await loadSession(); ready = true; setBusy(false); $('userInput').focus();
   } catch (error) { $('mode').textContent = '连接失败'; showError(error.message); }
 }
@@ -111,6 +112,11 @@ async function sendMessage() {
         history.push({ role: 'user', content: message }, { role: 'assistant', content: data.content });
         $('phase').textContent = data.state.phase;
         $('turnCount').textContent = data.state.turnCount;
+        if (data.memory?.memoriesUpdated || data.memory?.memoriesUsed) {
+          const note = document.createElement('div'); note.className = 'message-meta';
+          note.textContent = `长期记忆：${data.memory.memoriesUpdated || 0} 次更新 · 本轮参考 ${data.memory.memoriesUsed || 0} 条`;
+          row.querySelector('.message-content').appendChild(note);
+        }
       }
     });
     try {
@@ -159,7 +165,7 @@ $('newChat').addEventListener('click', async () => {
   try { await loadSession(); } catch (error) { showError(error.message); } finally { setBusy(false); $('userInput').focus(); }
 });
 $('clearChat').addEventListener('click', async () => {
-  if (!confirm('清除这段对话及其保存的记忆？此操作不能撤销。')) return;
+  if (!confirm('清除这段聊天记录？长期记忆将保留，可在“长期记忆”中单独清空。')) return;
   setBusy(true); showError('');
   try { await api('/api/session', { method: 'DELETE' }); await loadSession(); } catch (error) { showError(error.message); } finally { setBusy(false); }
 });
@@ -168,4 +174,68 @@ $('exportChat').addEventListener('click', () => {
   const url = URL.createObjectURL(new Blob([content || '暂无聊天记录'], { type: 'text/plain;charset=utf-8' }));
   const link = document.createElement('a'); link.href = url; link.download = '留白-对话记录.txt'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
+let memoryData = null, editingMemory = null, memoryBusy = false;
+const memoryStatuses = { active: '有效', pending: '待核对', superseded: '被新信息替代', resolved: '已结束 / 撤回', expired: '已过期' };
+const memorySources = { explicit: '明确要求记住', statement: '聊天自动提取', extracted: '模型提取原话', confirmed: '手动添加 / 更正', legacy: '旧版记录迁移' };
+const memoryCertainty = { stated: '用户陈述', inferred: '推测线索', tentative: '考虑中 / 计划' };
+function memoryError(message) { $('memoryError').textContent = message; $('memoryError').hidden = !message; }
+function memoryControls(busy) {
+  memoryBusy = busy;
+  $('memoryDialog').querySelectorAll('button,input,select,textarea').forEach(node => { if (node.id !== 'closeMemory') node.disabled = busy; });
+}
+function resetMemoryForm() {
+  editingMemory = null; $('memoryText').value = ''; $('saveMemory').textContent = '添加记忆'; $('cancelMemoryEdit').hidden = true;
+}
+function renderMemory() {
+  if (!memoryData) return;
+  $('captureMemory').checked = memoryData.settings.capture;
+  $('recallMemory').checked = memoryData.settings.recall;
+  $('memoryCount').textContent = memoryData.activeCount;
+  $('memorySummary').textContent = `${memoryData.activeCount} 条有效 · ${memoryData.pendingCount} 条待核对`;
+  $('memoryList').replaceChildren();
+  const filter = $('memoryFilter').value;
+  const items = memoryData.entries.filter(e => filter === 'all' || filter === 'history' && !['active', 'pending'].includes(e.status) || e.status === filter);
+  if (!items.length) { const p = document.createElement('p'); p.className = 'memory-empty'; p.textContent = '这里还没有记忆。聊聊近况，或者手动添加一条。'; $('memoryList').appendChild(p); }
+  for (const item of items) {
+    const card = document.createElement('article'); card.className = 'memory-entry'; card.dataset.memoryId = item.id;
+    const badge = document.createElement('div'); badge.className = 'memory-badge'; badge.textContent = `${item.label} · ${memoryStatuses[item.status]} · ${memoryCertainty[item.certainty]}`;
+    const text = document.createElement('p'); text.className = 'memory-text'; text.textContent = item.text;
+    const time = document.createElement('p'); time.className = 'memory-hint'; time.textContent = `${memorySources[item.source]} · 更新 ${new Date(item.updatedAt).toLocaleString()} · 有效至 ${new Date(item.expiresAt).toLocaleString()}`;
+    const details = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = '查看原话依据'; details.appendChild(summary);
+    for (const evidence of item.evidence) { const quote = document.createElement('blockquote'); quote.textContent = evidence.quote; details.appendChild(quote); }
+    const actions = document.createElement('div'); actions.className = 'memory-actions';
+    const action = (label, fn) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'text-button'; button.textContent = label; button.addEventListener('click', fn); actions.appendChild(button); };
+    action('更正', () => { editingMemory = item.id; $('memoryKind').value = item.kind; $('memoryText').value = item.text; $('saveMemory').textContent = '保存更正'; $('cancelMemoryEdit').hidden = false; $('memoryText').focus(); });
+    if (item.status === 'pending' || item.status === 'expired') action('确认仍然适用', () => changeMemory({ action: 'confirm', id: item.id }));
+    if (item.status === 'active' && ['activity', 'decision'].includes(item.kind)) action('结束 / 撤回', () => changeMemory({ action: 'resolve', id: item.id }));
+    action('删除', () => changeMemory({ action: 'delete', id: item.id }));
+    card.append(badge, text, time, details, actions); $('memoryList').appendChild(card);
+  }
+}
+async function refreshMemory() {
+  if (memoryBusy) return;
+  memoryControls(true); memoryError('');
+  try { memoryData = await (await api('/api/memories')).json(); renderMemory(); }
+  catch (error) { memoryError(error.message); }
+  finally { memoryControls(false); }
+}
+async function changeMemory(operation) {
+  if (memoryBusy || !memoryData) return;
+  memoryControls(true); memoryError('');
+  try {
+    memoryData = await (await api('/api/memories', { method: 'POST', body: JSON.stringify({ revision: memoryData.revision, ...operation }) })).json();
+    if (['add', 'edit', 'clear'].includes(operation.action) || operation.id === editingMemory) resetMemoryForm();
+    renderMemory();
+  } catch (error) { renderMemory(); memoryError(error.message); }
+  finally { memoryControls(false); }
+}
+$('openMemory').addEventListener('click', () => { $('memoryDialog').showModal(); refreshMemory(); });
+$('closeMemory').addEventListener('click', () => $('memoryDialog').close());
+$('refreshMemory').addEventListener('click', refreshMemory);
+$('memoryFilter').addEventListener('change', renderMemory);
+$('cancelMemoryEdit').addEventListener('click', resetMemoryForm);
+$('captureMemory').addEventListener('change', () => changeMemory({ action: 'settings', capture: $('captureMemory').checked }));
+$('recallMemory').addEventListener('change', () => changeMemory({ action: 'settings', recall: $('recallMemory').checked }));
+$('memoryForm').addEventListener('submit', event => { event.preventDefault(); changeMemory({ action: editingMemory ? 'edit' : 'add', ...(editingMemory ? { id: editingMemory } : {}), kind: $('memoryKind').value, text: $('memoryText').value.trim() }); });
+$('clearMemory').addEventListener('click', () => { if (confirm('清空全部长期记忆？旧聊天将退出后续模型上下文，界面中已有的聊天文字仍保留。')) changeMemory({ action: 'clear' }); });
 setBusy(false); initialize();

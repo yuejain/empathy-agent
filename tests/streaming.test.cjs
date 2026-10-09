@@ -60,7 +60,7 @@ test('local backend performs retrieval and generation without any cloud calls',a
  const c=client(url);const response=await c.request('/api/chat',{method:'POST',body:JSON.stringify({message:'本地测试工作压力',backend:'local'})});
  const final=parse(await response.text()).find(e=>e.type==='ai_response');
  assert.ok(final);assert.equal(final.backend,'local');assert.equal(final.analysisSource,'local-trained-head');assert.equal(final.sources[0].source,'fixture-corpus');
- assert.equal(cloud.requests.length,0);assert.equal(local.requests.length,2);
+ assert.equal(cloud.requests.length,0);assert.equal(local.requests.length,3);
  assert.match(local.requests.at(-1).body.messages[0].content,/fixture-corpus/);
  assert.equal(local.requests.at(-1).auth,undefined);
 });

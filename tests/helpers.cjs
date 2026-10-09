@@ -34,6 +34,7 @@ async function provider(t, options = {}) {
     if (options.status) { res.writeHead(options.status); res.end('secret-key-do-not-leak'); return; }
     let content = '你提到工作带来的压力。最让你在意的是哪一部分？';
     const system = body.messages[0]?.content || '';
+    if (system.includes('MEMORY_EXTRACTION')) content = JSON.stringify(options.memories || []);
     if (system.includes('分析文本中表达的情绪')) content = JSON.stringify({ primary_emotion: '焦虑', intensity: 0.4, confidence: 0.7, valence: -0.3, arousal: 0.5, dominance: 0.5, contextual_factors: [] });
     if (system.includes('评估文本中的安全风险')) content = JSON.stringify({ risk_level: 'L0', probabilities: { L0: .9, L1: .09, L2: .01 }, crisis_subtypes: { suicide_self_harm: 0, violence_others: 0, abuse: 0, acute_psychosis: 0, substance_abuse: 0, eating_disorder: 0, none: 1 }, confidence: .9 });
     if (options.content !== undefined) content = options.content;
