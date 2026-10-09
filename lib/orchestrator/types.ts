@@ -262,7 +262,7 @@ export interface OrchestratorInput {
   sessionState?: SessionState;
   signal?: AbortSignal;
   onDelta?: (content: string) => Promise<void> | void;
-  backend?: 'cloud' | 'local';
+  backend?: 'cloud';
 }
 
 /** 编排器输出 */
@@ -283,7 +283,8 @@ export interface OrchestratorOutput {
     quality?: { score: number; warnings: string[] };
     sources?: { source: string; source_url: string; license: string; score: number }[];
     analysisSource?: string;
-    backend?: 'cloud' | 'local';
+    backend?: 'cloud' | 'demo';
+    rag?: import('../emotion-rag').EmotionRagContext;
   };
 }
 

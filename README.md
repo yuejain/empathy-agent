@@ -2,17 +2,17 @@
 
 [![Validate local app](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml/badge.svg?branch=codex%2Flong-term-memory)](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml)
 
-一个可以在本机运行的情感陪伴应用，界面为中文，对话支持中英文。提供真实流式输出、主动跨会话记忆、情绪增强检索，以及塔罗、周易和情绪需要卡联想练习。可以接入 OpenAI 兼容的云端 API，也可以使用自行训练的本地小模型。
+一个可以在本机运行的情感陪伴应用，界面为中文，对话支持中英文。提供真实流式输出、主动跨会话记忆、情绪增强检索，以及塔罗、周易和情绪需要卡联想练习。**本地小模型负责情绪分析与 RAG，云端大模型负责最终回复**，支持 OpenAI 兼容 API。
 
 基础可用版本已通过 [PR #1](https://github.com/yuejain/empathy-agent/pull/1) 合并；本次长期记忆重构位于 **`codex/long-term-memory`**。首次克隆后，无模型配置时使用明确标注的规则演示；本地模型需要另行下载和训练。
 
 [快速运行](#快速运行) · [云端模型](#接入真实模型) · [长期记忆](#长期记忆) · [本地模型与语料](#本地模型与语料) · [训练结果](docs/TRAINING_RESULTS.md) · [实现与验收](docs/REVIEW.md)
 
-本地分类头、生成 LoRA 和情绪检索已实际运行验证。**本地生成仍为实验版**，可能角色混淆、复读或编造背景；中文人工情绪标签不足，不能把训练完成理解为质量已充分验证。
+本地多语言编码器、已训练情绪分类头和真实向量库用于检索增强。旧 Qwen3 LoRA 生成入口已停用，已有权重保留在本机，不再加载到网页回复链路。中文人工情绪标签仍不足，输出会标注不确定性，不能把分类分数当作诊断或情绪强度。
 
 ## 快速运行
 
-网页服务要求 Git 和 **Node.js 22.9+**。仅使用云端模型或规则演示，无需 Python、GPU 或数据库。网页服务已在 Windows 本机和 Ubuntu CI 验证；本地训练的配套脚本目前按 Windows + NVIDIA CUDA 环境提供。
+网页服务要求 Git 和 **Node.js 22.9+**。基础云端聊天或规则演示无需 Python、GPU 或数据库。本地情绪 RAG 需要 Python，在线分析运行在 CPU；Windows 配套安装脚本默认安装 CPU 版 PyTorch，分类训练也可选择 CUDA 加速。
 
 ```bash
 git clone --branch codex/long-term-memory https://github.com/yuejain/empathy-agent.git
@@ -80,15 +80,29 @@ npm start
 `model:check` 会向已配置的服务发送一条固定连接测试消息，可能产生少量服务商费用。它不会发送本地聊天记录。更改 `.env` 后重启服务。
 
 - `APP_MODE=auto`：所有模型配置为空时用演示模式；部分配置缺失时启动报错。
-- `APP_MODE=demo`：云端选项使用本地词典、规则与模板；选择已启动的本地模型仍可真实生成。
-- `APP_MODE=live`：要求云端地址和模型；正常云端聊天会并行情绪/风险分析，再提取记忆、流式生成。自动记忆可增加一次结构化模型调用（最多等待 10 秒，失败时仍可用规则提取）；接通本地分类检索可省去云端情绪分析。选择本地模型时，记忆提取也在本机完成，不会调用云端。
+- `APP_MODE=demo`：明确标注的本地规则模板演示，不调用云端，也不调用本地生成模型。
+- `APP_MODE=live`：要求云端地址和模型；并行执行本地情绪 RAG 与风险筛查，再提取记忆、流式生成。语义记忆提取和必要的风险分析使用已配置的云端服务；情绪模型、向量检索在本地。自动记忆最多增加一次结构化调用，失败时降级为规则提取。
 - 页面显示“模型已配置”代表读取了配置，连接是否有效应使用 `model:check` 验证。认证失败、限流、超时不会被伪装成成功对话。
 
 ## 本地模型与语料
 
-管线分为两个任务：冻结多语言 MiniLM 编码器、训练情绪分类头并建库；在 Qwen3-0.6B 上训练生成 LoRA。在线分类和检索使用 CPU，本次生成训练和推理已在 RTX 4070 Ti 12GB 上验证。
+当前管线冻结多语言 MiniLM 编码器，训练八个情绪分类头，并构建 384 维情绪检索库。每条消息先在本地形成情绪线索与相关语料，交给云端模型组织自然回复。
 
-**Git 仓库只包含代码、配置模板和结果说明，不包含语料快照、索引或模型权重。** 首次使用需要下载公开语料和基座模型，然后训练；下载依赖网络和额外磁盘空间。本机验证环境为 Python 3.11、CUDA 版 PyTorch 2.11.0，生成训练脚本要求可用的 CUDA GPU。
+```mermaid
+flowchart LR
+  U[当前用户消息] --> L[本地编码器与情绪分类头]
+  L --> R[情绪与语义检索]
+  R --> C[云端大模型]
+  L --> D[情绪指向与回应节奏]
+  D --> C
+  U --> C
+  M[相关长期记忆] --> C
+  C --> S[流式回复]
+```
+
+云端收到 `EMOTION_RAG_CONTEXT`：情绪标签、分类分数、不确定性、回应方向（倾听/梳理/小步行动等）和有来源的参考片段。明确的“只想倾诉”优先于建议；模型分数不充当情绪强度。没有匹配语料时不强行引用，本地服务不可用时明确标注基础词典降级。
+
+**Git 仓库只包含代码、配置模板和结果说明，不包含语料快照、索引或模型权重。** 首次使用需要下载公开语料和编码器，然后训练分类头、建库。默认流程不再下载 Qwen 或训练生成 LoRA；已有分类器及索引可直接复用，无需重训。
 
 在仓库目录的 Windows PowerShell 中运行：
 
@@ -96,10 +110,10 @@ npm start
 # 创建独立 Python 环境并安装依赖
 powershell -ExecutionPolicy Bypass -File .\Setup-LocalML.ps1
 
-# 下载语料和基座，清洗、训练分类器、建库、训练生成模型
+# 下载语料与编码器，清洗、训练情绪分类器、建库
 powershell -ExecutionPolicy Bypass -File .\Train-LocalML.ps1
 
-# 启动本地分类、检索和生成服务
+# 启动本地情绪分析与检索服务（CPU）
 powershell -ExecutionPolicy Bypass -File .\Start-LocalML.ps1
 ```
 
@@ -109,9 +123,9 @@ powershell -ExecutionPolicy Bypass -File .\Start-LocalML.ps1
 LOCAL_ML_URL=http://127.0.0.1:3001
 ```
 
-页面会显示语料库条数。在“回复模型”中选择本地实验模型即可离线生成，首次调用需要加载权重。只希望用本地检索辅助云端回复时，保持云端选项即可；这一方式仍会将消息、上下文和参考片段交给配置的云端服务。
+页面显示“云端回复”和本地情绪 RAG 状态，每轮可展开查看情绪参考和语料来源。消息、情绪指向、相关记忆及参考片段会交给配置的云端服务。网页不再提供本地生成选项；旧客户端请求 `backend: local` 会返回 410 并要求刷新，不静默转发。
 
-只用本地模型时，可以设置 `APP_MODE=demo`、保留云端配置为空，并在页面选择本地模型。停止本地服务使用 `powershell -ExecutionPolicy Bypass -File .\Stop-LocalML.ps1`。
+云端未配置时只有规则演示；完整生成需要配置云端 API。停止本地 RAG 使用 `powershell -ExecutionPolicy Bypass -File .\Stop-LocalML.ps1`。
 
 采集来源包括 GoEmotions、OpenAssistant 1/2 和 chinese-poetry，记录许可、版本、来源 URL 和内容哈希。清洗包括 Unicode 规范化、标识符替换、长度筛选及规范化精确去重。它不是完整匿名化；个人聊天不会自动成为训练数据。MediaWiki 采集器遵循 robots 限制，受限来源不计入已采集数据。
 
@@ -119,7 +133,7 @@ LOCAL_ML_URL=http://127.0.0.1:3001
 
 ### 实际训练结果
 
-以下是 2026-10-07 本机实际运行的记录，不代表每次重新采集都得到相同数量：
+以下是 2026-10-07 本机实际运行的记录，不代表每次重新采集都得到相同数量。其中生成训练仅保留为历史实验，当前应用只使用分类头和检索库：
 
 | 项目 | 结果与范围 |
 | --- | --- |
@@ -175,7 +189,7 @@ LOCAL_ML_URL=http://127.0.0.1:3001
 
 `SESSION_PERSISTENCE=false` 关闭磁盘保存；`DATA_DIR` 可指定保存目录。请避免将数据目录加入网盘或公开仓库。HttpOnly 所有者 cookie 有效期为 365 天，每次访问 API 延长；同一浏览器的新会话共享记忆。**不支持跨浏览器或跨设备同步**，清除站点 cookie 后不能自动恢复原身份。
 
-检索来源链接只在本次回复中展示，刷新恢复的是文字记录。选择本地回复时，分类、检索与生成在本机完成；本地生成服务不可用会明确报错，不自动转发云端。
+检索来源链接和情绪参考只在本次回复中展示，刷新恢复的是文字记录。本地服务只接收当前消息进行分类和检索，不接收云端凭据；最终回复、语义记忆提取及必要的风险分析由云端服务处理。
 
 服务只监听 `127.0.0.1`。这是本机个人使用版本，没有账号、远程登录、数据库集群或多进程协调；不要直接当作公网多用户服务部署。原 EdgeOne 配置保留供迁移参考，当前未验证 EdgeOne 发布，原 `edgeone makers dev` 命令不是当前启动路径。
 
@@ -183,7 +197,7 @@ AI 回复与情绪/风险分类是启发式结果，可能出错；本项目面�
 
 ## 验证
 
-长期记忆重构新增覆盖跨会话、持久化、过期、冲突、推测、旧版迁移、删除后不再引用、并发和失败回滚的测试；桌面与手机验证记忆管理操作。验证结果记录在 [验收记录](docs/REVIEW.md)，远程状态见 [Actions](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml)。Python 测试和真实模型验收单独在本机执行，不属于当前 CI 工作流。
+测试覆盖长期记忆、云端情绪指向传递、RAG 降级、旧客户端拒绝转发和网页管理操作。验证结果记录在 [验收记录](docs/REVIEW.md)，远程状态见 [Actions](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml)。CI 执行 Node、桌面/手机浏览器和轻量 Python 测试；真实模型验收单独执行。
 
 ```powershell
 npm test                          # 构建、核心模块和 HTTP 集成测试
@@ -192,7 +206,8 @@ npm run test:browser               # 桌面 + 手机尺寸的浏览器用例
 npm run check                     # Node + 浏览器测试
 npm run security:check             # 扫描 Git 暂存区，不输出密钥内容
 node --env-file-if-exists=.env scripts/verify-memory-live.cjs # 真实云端跨会话测试，产生 API 费用
-# 同一脚本加 --local，测试已启动的本地生成模型
+node --env-file-if-exists=.env scripts/verify-live.cjs # 只验收本地 RAG，不调用云端
+node --env-file-if-exists=.env scripts/verify-live.cjs --cloud # 本地 RAG + 真实云端中英文流式回复
 npm audit --registry=https://registry.npmjs.org
 .\.venv-ml\Scripts\python.exe -m unittest discover -s ml -p 'test_*.py'
 ```
@@ -203,7 +218,7 @@ API 联调用本机模拟服务验证模型名称、地址、认证、上下文�
 
 `.env*`（除示例）、私钥、聊天记录、原始/处理语料、模型权重、缓存和验收日志均有 Git 忽略规则，发布代码时保留在本机。
 
-2026-10-07 已额外完成 `mimo-v2.6-pro` 真实连接和增量输出、本地 GPU 训练及本地模型中英文流式调用。`node scripts/verify-live.cjs` 可验收已运行的本地模型；加 `--cloud` 会额外调用已配置的云端服务一次。详细范围见 [验收记录](docs/REVIEW.md)，不构成临床有效性评估。
+真实模型脚本使用构造消息和独立档案，不读取用户聊天；`verify-live.cjs --cloud` 调用两轮云端回复，可能产生费用。只有加 `--cloud` 才会从该 RAG 脚本发送云端请求。详细范围见 [验收记录](docs/REVIEW.md)，不构成模型效果或临床有效性评估。
 
 ## 代码结构
 
@@ -215,7 +230,8 @@ API 联调用本机模拟服务验证模型名称、地址、认证、上下文�
 | `lib/orchestrator/` | 主对话链路、状态更新、长期记忆与上下文衔接、卡牌入口 |
 | `lib/memory/` | 主动提取、原话校验、版本替代、时效、检索与管理操作 |
 | `lib/safety-classifier/` | 规则、模型、上下文和融合决策 |
-| `lib/local-knowledge.ts`、`ml/serve.py` | 本地分类、情绪检索和 LoRA 生成的连接 |
+| `lib/local-knowledge.ts`、`ml/serve.py` | 本地情绪分类和向量检索接口 |
+| `lib/emotion-rag.ts` | 结构化情绪指向、回应方向、检索证据到云端的桥接 |
 | `ml/` | 来源配置、采集清洗、模型下载、训练与评估 |
 | `lib/tarot/reflection-games.ts` | 塔罗、周易和需要卡的规则 |
 | `agents/empathy-agent/` | Fetch 风格适配器及事件映射；本地服务负责持久化 |

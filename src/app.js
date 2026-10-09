@@ -8,12 +8,9 @@ try {
 let controller = null, ready = false, history = [], mode = 'demo', pendingStop = null;
 let cloudModel = '';
 function modelNotice() {
-  $('modeNotice').textContent = $('backend').value === 'local'
-    ? '本地小模型（实验版）：消息在本机处理。中文情绪标注和训练样本有限，回复可能不准确，可随时切换模型。'
-    : mode === 'demo' ? '当前为本地规则演示，回复由模板生成。'
-    : `使用模型 ${cloudModel}。消息、近期上下文、相关长期记忆及检索片段会交给你配置的模型服务处理。`;
+  $('modeNotice').textContent = mode === 'demo' ? '当前为本地规则演示，回复由模板生成。配置云端模型后，可使用情绪 RAG 增强回复。'
+    : `本地小模型提供情绪分析和检索参考，由 ${cloudModel} 生成回复。消息、情绪线索、近期上下文、相关长期记忆及检索片段会发送给已配置的云端服务。`;
 }
-$('backend').addEventListener('change', () => { try { localStorage.setItem('empathy-backend', $('backend').value); } catch {} modelNotice(); });
 const phaseNames = { INIT: '开始倾听', EMPATHY_PHASE: '倾听与共情', EXPLORE_PHASE: '一起梳理', ACTION_PHASE: '尝试小步行动', REVIEW_PHASE: '回顾与整理', TAROT_ENTRY: '卡牌联想', SESSION_CLOSE: '暂时告一段落', SAFETY_PROTOCOL: '安全支持' };
 const headers = () => ({ 'Content-Type': 'application/json', 'makers-conversation-id': sessionId });
 function showError(message) { $('error').textContent = message; $('error').hidden = !message; }
@@ -21,7 +18,7 @@ function setBusy(busy) {
   $('userInput').disabled = !ready || busy;
   $('sendButton').disabled = !ready || busy || !$('userInput').value.trim();
   $('newChat').disabled = $('clearChat').disabled = $('exportChat').disabled = !ready || busy;
-  $('backend').disabled = $('playGame').disabled = $('game').disabled = !ready || busy;
+  $('playGame').disabled = $('game').disabled = !ready || busy;
   $('openMemory').disabled = !ready || busy;
   document.querySelectorAll('[data-prompt]').forEach(b => b.disabled = !ready || busy);
   $('stopButton').hidden = !busy; $('pending').hidden = !busy;
@@ -58,9 +55,9 @@ async function initialize() {
     if (!response.ok) throw new Error('服务状态检查失败，请刷新页面重试。');
     const health = await response.json(); mode = health.mode;
     cloudModel = health.model;
-    try { if (localStorage.getItem('empathy-backend') === 'local') $('backend').value = 'local'; } catch {}
-    $('backend').querySelector('[value="local"]').textContent = health.local?.generator ? '本地 Qwen3 · 实验版' : '本地小模型（未启动）';
-    $('knowledgeStatus').textContent = health.local?.available ? `情绪语料库 · ${health.local.indexDocuments} 条` : '情绪语料库未连接';
+    try { localStorage.removeItem('empathy-backend'); } catch {}
+    $('replyModel').textContent = mode === 'demo' ? '规则演示' : `云端回复 · ${cloudModel}`;
+    $('knowledgeStatus').textContent = health.local?.available ? `本地情绪 RAG · ${health.local.indexDocuments} 条` : '本地情绪 RAG 未连接 · 使用基础情绪线索';
     $('mode').textContent = mode === 'demo' ? '演示模式' : '模型已配置';
     $('modeNotice').textContent = mode === 'demo'
       ? '当前为本地规则演示，回复由模板生成。配置本地 .env 并重启服务后，可使用真实模型对话。'
@@ -78,7 +75,7 @@ async function sendMessage() {
   const sentRow = addMessage('user', message); $('userInput').value = '';
   let received = false, finished = false, partialRow = null, partialText = '';
   try {
-    const response = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message, backend: $('backend').value }), signal: controller.signal });
+    const response = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message }), signal: controller.signal });
     if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) throw new Error('服务没有返回有效的消息流。');
     const reader = response.body.getReader(), decoder = new TextDecoder();
     const parser = createSSEParser(event => {
@@ -97,6 +94,17 @@ async function sendMessage() {
         if (partialRow) partialRow.querySelector('.message-content').textContent = data.content;
         else addMessage('assistant', data.content, data.mode === 'demo' ? '本地演示回复' : '');
         const row = partialRow || $('messages').lastElementChild;
+        if (data.rag?.direction) {
+          const note = document.createElement('details'); note.className = 'source-note emotion-note';
+          const title = document.createElement('summary'); title.textContent = `本轮情绪参考 · ${data.rag.direction.label}`; note.appendChild(title);
+          const text = document.createElement('p');
+          const fallback = ['unavailable','not_configured'].includes(data.rag.status);
+          text.textContent = fallback ? '本地 RAG 当前不可用，云端使用当前原话和基础情绪线索作答，本轮未引用检索语料。'
+            : `${data.rag.emotion.primary}（${data.rag.emotion.uncertain ? '不确定线索，请以你的感受为准' : '模型线索，非诊断'}）。${data.rag.status === 'no_matches' ? '未找到合适语料。' : `参考 ${data.rag.evidenceCount} 条语料。`}`;
+          note.appendChild(text); row.querySelector('.message-content').appendChild(note);
+          if (fallback) $('knowledgeStatus').textContent = '本轮 RAG 不可用 · 已使用基础情绪线索';
+          else $('knowledgeStatus').textContent = '本地情绪 RAG 已参与本轮回复';
+        }
         if (Array.isArray(data.sources) && data.sources.length) {
           const note = document.createElement('details'); note.className = 'source-note';
           const title = document.createElement('summary'); title.textContent = '本轮参考语料来源'; note.appendChild(title);

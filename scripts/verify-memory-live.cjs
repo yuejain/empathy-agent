@@ -1,5 +1,5 @@
 // Uses only synthetic fixtures and its own temporary owner/store; never reads the user's chat file.
-// Run with node --env-file-if-exists=.env scripts/verify-memory-live.cjs [--local]
+// Run with node --env-file-if-exists=.env scripts/verify-memory-live.cjs (cloud API calls).
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { join, dirname, basename } = require('node:path');
@@ -8,7 +8,8 @@ const { once } = require('node:events');
 const { createApp } = require('../dist/server');
 const { SessionStore } = require('../dist/server/session-store');
 const { client, parse } = require('../tests/helpers.cjs');
-const backend = process.argv.includes('--local') ? 'local' : 'cloud';
+if(process.argv.includes('--local')) { console.error('Local generation is retired. Remove --local to explicitly test cloud replies.'); process.exit(1); }
+const backend = 'cloud';
 async function run() {
   const dir = fs.mkdtempSync(join(tmpdir(), 'empathy-memory-live-')), file = join(dir, 'sessions.json');
   const server = createApp(process.env, new SessionStore(file));
@@ -33,8 +34,7 @@ async function run() {
     assert.equal(new SessionStore(file).getMemory(owner).entries.length,p.entries.length);
     const response = await send('延续上次的话题，我正在做什么？请简短回答。',crypto.randomUUID());
     assert.ok(response.memory.memoriesUsed>0); assert.ok(results.at(-1).deltas>0);
-    // The cloud smoke test checks actual generation, not merely that memory was selected.
-    if (backend==='cloud') assert.match(response.content,/摄影|展/);
+    assert.match(response.content,/摄影|展/);
     const clear=await c.request('/api/memories',{method:'POST',body:JSON.stringify({revision:p.revision,action:'clear'})});
     if(clear.status===409) {p=await profile();assert.equal((await c.request('/api/memories',{method:'POST',body:JSON.stringify({revision:p.revision,action:'clear'})})).status,200);}
     else assert.equal(clear.status,200);

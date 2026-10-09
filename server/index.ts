@@ -86,8 +86,8 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
       const body = await readBody(req);
       const message = body && typeof body === 'object' ? (body as { message?: unknown }).message : undefined;
       const backend = body && typeof body === 'object' ? (body as { backend?: unknown }).backend : undefined;
-      if (backend !== undefined && backend !== 'cloud' && backend !== 'local') throw new HttpError(400, '回复模型无效。');
-      if (backend === 'local' && !(await knowledge.health()).generator) throw new HttpError(503, '本地生成模型尚未启动，请启动本地模型服务或选择云端模型。');
+      if (backend === 'local') throw new HttpError(410, '本地生成已停用，未转发此消息。请刷新页面：本地模型负责情绪 RAG，云端模型负责回复。');
+      if (backend !== undefined && backend !== 'cloud') throw new HttpError(400, '回复模型无效。');
       if (typeof message !== 'string' || !message.trim() || message.length > 2000) throw new HttpError(400, '消息长度应为 1–2000 个字符。');
       if (ownerBusy()) throw new HttpError(409, '你的另一段对话正在回复，请稍后再试。');
       if (active.size >= 8) throw new HttpError(503, '服务繁忙，请稍后再试。');

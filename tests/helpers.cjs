@@ -21,12 +21,12 @@ async function provider(t, options = {}) {
   const requests = [];
   const server = createServer(async (req, res) => {
     if (options.localKnowledge && req.url==='/health') {
-      res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true,generator:true,index_documents:1}));return;
+      res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true,classifier:true,role:'emotion-rag',generator:false,index_documents:1}));return;
     }
     const chunks = []; for await (const c of req) chunks.push(c);
     const body = JSON.parse(Buffer.concat(chunks).toString()); requests.push({ path: req.url, auth: req.headers.authorization, body });
     if(options.localKnowledge && req.url==='/analyze') {
-      res.setHeader('Content-Type','application/json');res.end(JSON.stringify({emotion:'fear',confidence:.8,scores:{fear:.8},label_source:'local-trained-head',index_size:1,
+      res.setHeader('Content-Type','application/json');res.end(JSON.stringify(options.analysis || {emotion:'fear',confidence:.8,scores:{fear:.8},label_source:'local-trained-head',index_size:1,
         hits:[{id:'fixture',text:'工作压力与倾听',response:'先听你说。',source:'fixture-corpus',source_url:'https://example.org/corpus',license:'fixture',language:'zh',emotions:['fear'],category:'human-assistant',score:.8}]}));return;
     }
     if (options.delay) await new Promise(resolve => setTimeout(resolve, options.delay));

@@ -1,3 +1,4 @@
+param([switch]$UseCuda)
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 if (-not (Test-Path -LiteralPath '.venv-ml\Scripts\python.exe')) {
@@ -7,8 +8,9 @@ if (-not (Test-Path -LiteralPath '.venv-ml\Scripts\python.exe')) {
 $python = Join-Path $PSScriptRoot '.venv-ml\Scripts\python.exe'
 & $python -m pip install --upgrade pip
 if ($LASTEXITCODE -ne 0) { throw 'pip installation failed.' }
-& $python -m pip install 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cu128
-if ($LASTEXITCODE -ne 0) { throw 'CUDA torch installation failed. See docs/LOCAL_ML.md for the hash-verified mirror.' }
+$torchIndex = if ($UseCuda) { 'https://download.pytorch.org/whl/cu128' } else { 'https://download.pytorch.org/whl/cpu' }
+& $python -m pip install 'torch==2.11.0' --index-url $torchIndex
+if ($LASTEXITCODE -ne 0) { throw 'torch installation failed. See docs/LOCAL_ML.md.' }
 & $python -m pip install -r ml/requirements.txt
 if ($LASTEXITCODE -ne 0) { throw 'ML dependency installation failed.' }
 & $python -c "import torch; print('CUDA available:', torch.cuda.is_available())"

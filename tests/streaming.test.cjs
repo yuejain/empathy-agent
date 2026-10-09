@@ -55,24 +55,26 @@ test('local model configuration cannot send private text to a remote analysis se
  assert.throws(()=>new LocalKnowledge({LOCAL_ML_URL:'https://remote.example'}));
  assert.equal(new LocalKnowledge({LOCAL_ML_URL:'http://127.0.0.1:3001'}).url,'http://127.0.0.1:3001');
 });
-test('local backend performs retrieval and generation without any cloud calls',async t=>{
+test('local model only analyzes; cloud receives emotional direction and evidence and generates the stream',async t=>{
  const cloud=await provider(t),local=await provider(t,{localKnowledge:true}),{url}=await app(t,{...cloud.env,LOCAL_ML_URL:local.env.AI_GATEWAY_BASE_URL.replace('/v1','')});
- const c=client(url);const response=await c.request('/api/chat',{method:'POST',body:JSON.stringify({message:'本地测试工作压力',backend:'local'})});
+ const c=client(url);const response=await c.request('/api/chat',{method:'POST',body:JSON.stringify({message:'本地测试工作压力，今天只想倾诉，不用给建议'})});
  const final=parse(await response.text()).find(e=>e.type==='ai_response');
- assert.ok(final);assert.equal(final.backend,'local');assert.equal(final.analysisSource,'local-trained-head');assert.equal(final.sources[0].source,'fixture-corpus');
- assert.equal(cloud.requests.length,0);assert.equal(local.requests.length,3);
- assert.match(local.requests.at(-1).body.messages[0].content,/fixture-corpus/);
- assert.equal(local.requests.at(-1).auth,undefined);
+ assert.ok(final);assert.equal(final.backend,'cloud');assert.equal(final.analysisSource,'local-trained-head');assert.equal(final.sources[0].source,'fixture-corpus');
+ assert.equal(local.requests.length,1);assert.equal(local.requests[0].path,'/analyze');assert.equal(local.requests[0].auth,undefined);
+ const generation=cloud.requests.find(r=>r.body.stream);assert.ok(generation);assert.equal(generation.auth,'Bearer fixture-secret');
+ assert.match(generation.body.messages[0].content,/EMOTION_RAG_CONTEXT/);assert.match(generation.body.messages[0].content,/fixture-corpus/);
+ assert.match(generation.body.messages[0].content,/先倾听与承接感受/);assert.equal(final.rag.direction.mode,'listen');assert.equal(final.rag.evidenceCount,1);
+ assert.ok(!cloud.requests.some(r=>r.body.messages[0].content.includes('分析文本中表达的情绪')));
 });
-test('unavailable local model fails explicitly and never switches to cloud',async t=>{
+test('stale local-generation clients are rejected without silently forwarding their message',async t=>{
  const cloud=await provider(t),{url}=await app(t,cloud.env),c=client(url);
  const response=await c.request('/api/chat',{method:'POST',body:JSON.stringify({message:'私密测试',backend:'local'})});
- assert.equal(response.status,503);assert.equal(cloud.requests.length,0);
+ assert.equal(response.status,410);assert.equal(cloud.requests.length,0);assert.match(await response.text(),/未转发/);
 });
 
-test('a local model input echo is not committed as a successful reply',async t=>{
- const message='我担心明天的演示会忘词，心里很紧张。';
- const local=await provider(t,{localKnowledge:true,content:message}),{url}=await app(t,{APP_MODE:'demo',LOCAL_ML_URL:local.env.AI_GATEWAY_BASE_URL.replace('/v1','')});
- const c=client(url);const r=await c.request('/api/chat',{method:'POST',body:JSON.stringify({message,backend:'local'})});
- const events=parse(await r.text());assert.equal(events.at(-1).code,'INVALID_RESPONSE');assert.equal((await c.state()).history.length,0);
+test('unavailable RAG degrades explicitly to cloud with local lexical hints and no invented sources',async t=>{
+ const cloud=await provider(t),{url}=await app(t,{...cloud.env,LOCAL_ML_URL:'http://127.0.0.1:1'}),c=client(url);
+ const final=(await c.chat('我担心明天的演示')).events[0];
+ assert.equal(final.backend,'cloud');assert.equal(final.rag.status,'unavailable');assert.equal(final.rag.emotion.confidence,null);assert.equal(final.rag.emotion.uncertain,true);
+ assert.deepEqual(final.sources,[]);assert.match(cloud.requests.find(r=>r.body.stream).body.messages[0].content,/"status":"unavailable"/);
 });
