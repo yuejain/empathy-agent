@@ -21,12 +21,12 @@ async function provider(t, options = {}) {
   const requests = [];
   const server = createServer(async (req, res) => {
     if (options.localKnowledge && req.url==='/health') {
-      res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true,generator:true,index_documents:1}));return;
+      res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true,classifier:true,role:'emotion-rag',generator:false,index_documents:1}));return;
     }
     const chunks = []; for await (const c of req) chunks.push(c);
     const body = JSON.parse(Buffer.concat(chunks).toString()); requests.push({ path: req.url, auth: req.headers.authorization, body });
     if(options.localKnowledge && req.url==='/analyze') {
-      res.setHeader('Content-Type','application/json');res.end(JSON.stringify({emotion:'fear',confidence:.8,scores:{fear:.8},label_source:'local-trained-head',index_size:1,
+      res.setHeader('Content-Type','application/json');res.end(JSON.stringify(options.analysis || {emotion:'fear',confidence:.8,scores:{fear:.8},label_source:'local-trained-head',index_size:1,
         hits:[{id:'fixture',text:'工作压力与倾听',response:'先听你说。',source:'fixture-corpus',source_url:'https://example.org/corpus',license:'fixture',language:'zh',emotions:['fear'],category:'human-assistant',score:.8}]}));return;
     }
     if (options.delay) await new Promise(resolve => setTimeout(resolve, options.delay));
@@ -34,6 +34,8 @@ async function provider(t, options = {}) {
     if (options.status) { res.writeHead(options.status); res.end('secret-key-do-not-leak'); return; }
     let content = '你提到工作带来的压力。最让你在意的是哪一部分？';
     const system = body.messages[0]?.content || '';
+    if (system.includes('MEMORY_EXTRACTION')) content = JSON.stringify(options.memories || []);
+    if (system.includes('TURN_ANALYSIS') && options.turnAnalysis) content=JSON.stringify(typeof options.turnAnalysis==='function'?options.turnAnalysis(body):options.turnAnalysis);
     if (system.includes('分析文本中表达的情绪')) content = JSON.stringify({ primary_emotion: '焦虑', intensity: 0.4, confidence: 0.7, valence: -0.3, arousal: 0.5, dominance: 0.5, contextual_factors: [] });
     if (system.includes('评估文本中的安全风险')) content = JSON.stringify({ risk_level: 'L0', probabilities: { L0: .9, L1: .09, L2: .01 }, crisis_subtypes: { suicide_self_harm: 0, violence_others: 0, abuse: 0, acute_psychosis: 0, substance_abuse: 0, eating_disorder: 0, none: 1 }, confidence: .9 });
     if (options.content !== undefined) content = options.content;

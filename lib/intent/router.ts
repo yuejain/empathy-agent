@@ -9,8 +9,21 @@ import {
   IntentRecognitionResult, RouteDecision, RouteTarget,
   RoutePriority, RouteStrategy, StateMachineHints,
   InteractionIntent, MetaFeedbackRecord, FeedbackPattern,
-  IntentPattern, SubIntent,
+  SubIntent,
 } from './types';
+import { MemoryRecord } from '../memory/schema';
+import { eligible } from '../memory/policy';
+
+export function communicationGuidance(entries: MemoryRecord[], input: string) {
+  const preferences = entries.filter(e => eligible(e,Date.now()) && e.key.startsWith('profile:communication:')).sort((a,b) => a.updatedAt-b.updatedAt);
+  const accumulator = new MetaFeedbackAccumulator();
+  for (const e of preferences.filter(e => e.key.endsWith(':style'))) accumulator.addFeedback('style_adjustment', {request:e.text,style: /直接|direct/i.test(e.text) ? 'direct' : /简短|brief/i.test(e.text) ? 'brief' : /详细|detail/i.test(e.text) ? 'detailed' : 'gentle'}, 'current');
+  const style = /直接|be direct/i.test(input) ? 'direct' : /简短|be brief/i.test(input) ? 'brief' : /详细|more detail/i.test(input) ? 'detailed' : accumulator.getCommunicationStyle();
+  const questionPreference=preferences.find(e => e.key.endsWith(':questions'))?.text || '';
+  const allowQuestions=/可以问问题|可以提问|恢复提问|you can ask questions/i.test(input);
+  const noQuestions = !allowQuestions && /别总问问题|不要总问问题|stop asking questions/i.test(input+' '+questionPreference);
+  return { style, noQuestions, instruction: `${({direct:'直接回应重点',brief:'尽量简短',detailed:'按用户要求解释清楚',gentle:'使用温和措辞',default:'自然回应'} as Record<string,string>)[style] || '自然回应'}；${noQuestions ? '避免习惯性追问，必要的即时安全确认除外' : '最多提出一个问题'}。当前明确意愿优先。` };
+}
 
 // ==================== 路由表 ====================
 
@@ -184,6 +197,7 @@ export class MetaFeedbackAccumulator {
       timestamp: new Date().toISOString(),
       stateAtTime: currentState,
     });
+    this.feedbackHistory = this.feedbackHistory.slice(-20);
 
     return this.evaluatePattern();
   }
@@ -252,13 +266,6 @@ export class MetaFeedbackAccumulator {
 // ==================== 路由决策引擎 ====================
 
 export class IntentRouter {
-  private feedbackAccumulator: MetaFeedbackAccumulator;
-  private intentHistory: IntentPattern | null = null;
-
-  constructor() {
-    this.feedbackAccumulator = new MetaFeedbackAccumulator();
-  }
-
   /**
    * 做出路由决策
    */
@@ -388,9 +395,7 @@ export class IntentRouter {
         break;
 
       case 'L2.5_advice_seeking':
-        hints.push('不要直接给建议');
-        hints.push('先承认需求，再引导回探索');
-        hints.push('如果用户坚持，给框架性建议而非直接答案');
+        hints.push('先承认处境，再按用户请求给一个可选择的建议，不替用户作决定');
         break;
 
       case 'L2.6_information_query':
@@ -420,49 +425,4 @@ export class IntentRouter {
     return hints;
   }
 
-  /**
-   * 处理元对话反馈
-   */
-  handleMetaFeedback(
-    subIntent: string,
-    details: Record<string, unknown>,
-    currentState: string
-  ): FeedbackPattern {
-    const feedbackType = this.mapSubIntentToFeedbackType(subIntent);
-    return this.feedbackAccumulator.addFeedback(feedbackType, details, currentState);
-  }
-
-  /**
-   * 映射子意图到反馈类型
-   */
-  private mapSubIntentToFeedbackType(subIntent: string): MetaFeedbackRecord['type'] {
-    const map: Record<string, MetaFeedbackRecord['type']> = {
-      'L2.7a_negative_feedback': 'negative',
-      'L2.7b_positive_feedback': 'positive',
-      'L2.7c_style_adjustment': 'style_adjustment',
-      'L2.7d_topic_switch': 'topic_switch',
-    };
-    return map[subIntent] || 'negative';
-  }
-
-  /**
-   * 获取通信风格偏好
-   */
-  getCommunicationStyle(): string {
-    return this.feedbackAccumulator.getCommunicationStyle();
-  }
-
-  /**
-   * 更新意图历史
-   */
-  updateIntentHistory(pattern: IntentPattern): void {
-    this.intentHistory = pattern;
-  }
-
-  /**
-   * 获取意图历史
-   */
-  getIntentHistory(): IntentPattern | null {
-    return this.intentHistory;
-  }
 }

@@ -1,6 +1,7 @@
 """Frozen multilingual encoder + trainable 8-label linear head, and an emotion-aware index."""
 from __future__ import annotations
-import argparse, collections, json, os, random, time
+import argparse, collections, json, os, random, time, uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from corpus import ROOT, DATA, LABELS, read_jsonl, write_json, digest
 
@@ -14,8 +15,13 @@ def metrics(y, predicted):
         'micro_precision':float(precision_score(y,predicted,average='micro',zero_division=0)),
         'micro_recall':float(recall_score(y,predicted,average='micro',zero_division=0))}
 
-def main():
-    parser=argparse.ArgumentParser(); parser.add_argument('--max-per-language',type=int,default=10000); args=parser.parse_args()
+def main(argv=None):
+    parser=argparse.ArgumentParser(); parser.add_argument('--max-per-language',type=int,default=10000); parser.add_argument('--candidate',action='store_true'); args=parser.parse_args(argv)
+    from model_registry import classifier_lease
+    # Held by the training process itself, even if its launching service exits.
+    with classifier_lease(ROOT/'models/local'):train(args)
+
+def train(args):
     import numpy as np, torch, joblib
     from sentence_transformers import SentenceTransformer
     from sklearn.linear_model import LogisticRegression
@@ -25,7 +31,11 @@ def main():
     encoder_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
     base=ROOT/'models/local/encoder-base'
     revision=json.loads((base/'download-manifest.json').read_text())['revision']
-    encoder=SentenceTransformer(str(base),device='cuda' if torch.cuda.is_available() else 'cpu',local_files_only=True)
+    encoder=SentenceTransformer(str(out/'encoder' if args.candidate else base),device='cpu' if args.candidate else 'cuda' if torch.cuda.is_available() else 'cpu',local_files_only=True)
+    old_head=None
+    if args.candidate:
+        from model_registry import pointer,verified_model
+        old_head=joblib.load(verified_model(pointer()['version']))
     rows=list(read_jsonl(DATA/'processed/corpus.jsonl'))
     labeled=[r for r in rows if r['emotions']]
     training=[]
@@ -44,8 +54,10 @@ def main():
     for col in range(len(LABELS)):
         head=LogisticRegression(C=2.0,class_weight='balanced',max_iter=500,random_state=42)
         head.fit(x[:n],y[:n,col],sample_weight=sample_weight); heads.append(head)
-    joblib.dump({'heads':heads,'labels':LABELS,'threshold':.5},out/'emotion-head.joblib')
-    encoder.save(str(out/'encoder'))
+    version=uuid.uuid4().hex if args.candidate else None
+    target=out/'classifiers'/version if args.candidate else out;target.mkdir(parents=True,exist_ok=True)
+    joblib.dump({'heads':heads,'labels':LABELS,'threshold':.5},target/'emotion-head.joblib')
+    if not args.candidate:encoder.save(str(out/'encoder'))
     report={'seed':42,'encoder':encoder_name,'revision':revision,'encoder_frozen':True,
       'trained_parameters':int(sum(h.coef_.size+h.intercept_.size for h in heads)),
       'backend':str(encoder.device),'encoder_backend':str(encoder.device),'head_training_backend':'cpu (scikit-learn)',
@@ -54,6 +66,7 @@ def main():
       'weighting':'inverse language frequency capped at 10; weak labels weighted 0.25',
       'training_content_hashes_sha256':digest('\n'.join(sorted(r['content_hash'] for r in training))),
       'evaluations':{},'threshold':.5,'corpus_sha256':digest((DATA/'processed/corpus.jsonl').read_bytes())}
+    baseline={}
     for split in ['validation','test']:
       for language in ['zh','en']:
        for origin in ['human','weak-keywords']:
@@ -61,6 +74,18 @@ def main():
         if not indexes: continue
         probabilities=np.stack([h.predict_proba(x[indexes])[:,1] for h in heads],axis=1)
         report['evaluations'][f'{split}/{language}/{origin}']=metrics(y[indexes],probabilities>=.5)
+        if old_head:
+            probabilities=np.stack([h.predict_proba(x[indexes])[:,1] for h in old_head['heads']],axis=1)
+            baseline[f'{split}/{language}/{origin}']=metrics(y[indexes],probabilities>=.5)
+    if args.candidate:
+        from model_registry import quality_gate,atomic_json,publish
+        gate=quality_gate(report['evaluations'],baseline)
+        manifest={**report,**gate,'baseline':baseline,'version':version,'createdAt':datetime.now(timezone.utc).isoformat(),
+            'head_sha256':digest((target/'emotion-head.joblib').read_bytes()),'elapsed_seconds':round(time.time()-started,2)}
+        write_json(target/'manifest.json',manifest);atomic_json(out/'classifiers/latest.json',manifest)
+        if gate['passed']:publish(version)
+        print(json.dumps({'version':version,**gate,'elapsed_seconds':manifest['elapsed_seconds']},ensure_ascii=False),flush=True)
+        return
     from build_index import build
     index=build(encoder,rows)
     report.update(index_documents=index['documents'],index_languages=index['languages'],elapsed_seconds=round(time.time()-started,2))

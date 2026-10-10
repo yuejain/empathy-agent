@@ -46,5 +46,9 @@ def download(repo, directory):
     write_json(target/'download-manifest.json',{'repo':repo,'revision':info['sha'],'files':entries})
 
 if __name__=='__main__':
+    import argparse
+    parser=argparse.ArgumentParser(description='Download the local RAG encoder; the retired generator is optional research only.')
+    parser.add_argument('--with-legacy-generator',action='store_true')
+    args=parser.parse_args()
     download('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2','encoder-base')
-    download('Qwen/Qwen3-0.6B','generator-base')
+    if args.with_legacy_generator: download('Qwen/Qwen3-0.6B','generator-base')

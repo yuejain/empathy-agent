@@ -44,12 +44,12 @@ test('SSE handles named events, split CRLF, comments, multiline data and EOF', (
 });
 test('local emotion recognition recognizes phrases and unknown inputs stay neutral', async () => {
   const r = new EmotionRecognizer({ APP_MODE:'demo' });
-  assert.equal((await r.recognizeEmotion('今天我很焦虑')).primaryEmotion.name,'焦虑');
-  assert.equal((await r.recognizeEmotion('你好')).valence,0);
+  assert.equal((await r.recognizeLocally('今天我很焦虑')).primaryEmotion.name,'焦虑');
+  assert.equal((await r.recognizeLocally('你好')).valence,0);
 });
 test('direct conversation, exploration, action, review and goodbye are reachable', async () => {
   const o = new ConversationOrchestrator({APP_MODE:'demo'}); let state;
-  for (const [input, expected] of [['你好','EMPATHY_PHASE'],['下一步怎么做','EXPLORE_PHASE'],['我愿意试试','ACTION_PHASE'],['我已经完成了','REVIEW_PHASE'],['再见','SESSION_CLOSE']]) {
+  for (const [input, expected] of [['你好','EMPATHY_PHASE'],['我想了解这个问题，继续梳理','EXPLORE_PHASE'],['我愿意试试','ACTION_PHASE'],['我已经完成了','REVIEW_PHASE'],['再见','SESSION_CLOSE']]) {
     const r = await o.processTurn({userId:'u',sessionId:'s',userInput:input,sessionState:state}); state=r.updatedState; assert.equal(r.metadata.state,expected);
   }
   assert.equal(state.turnCount,5);
@@ -63,7 +63,7 @@ test('explicit memory survives the recent-history window and is cleared on reque
   for(let i=0;i<12;i++) await send('聊一聊今天的事情'+i);
   assert.equal(state.recentHistory.length,20);
   assert.match((await send('我叫什么')).response,/小林/);
-  assert.equal((await send('忘记所有记忆')).updatedState.explicitMemories.length,0);
+  assert.equal((await send('忘记所有记忆')).updatedMemory.entries.length,0);
   assert.doesNotMatch((await send('我叫什么')).response,/小林/);
   await assert.rejects(o.processTurn({userId:'other',sessionId:'s',userInput:'你好',sessionState:state}), /身份/);
 });
@@ -86,10 +86,10 @@ test('tarot actually draws a card and returns to conversation', async () => {
 });
 test('session store persists, isolates owners and deletes without corrupting other users', async t => {
   const dir=mkdtempSync(join(tmpdir(),'empathy-test-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const file=join(dir,'sessions.json');
-  const o=new ConversationOrchestrator({APP_MODE:'demo'}), r=await o.processTurn({userId:'a',sessionId:'s',userInput:'记住：我叫小林'});
-  const store=new SessionStore(file); store.set('a','s',r.updatedState);
-  const reopened=new SessionStore(file); assert.equal(reopened.get('a','s').explicitMemories[0],'我叫小林'); assert.equal(reopened.get('b','s'),undefined);
-  reopened.delete('a','s'); assert.equal(new SessionStore(file).get('a','s'),undefined); assert.doesNotMatch(readFileSync(file,'utf8'),/小林/);
+  const o=new ConversationOrchestrator({APP_MODE:'demo'}), r=await o.processTurn({userId:'a',sessionId:'a:s',userInput:'记住：我叫小林'});
+  const store=new SessionStore(file); store.set('a','s',r.updatedState,r.updatedMemory,0);
+  const reopened=new SessionStore(file); assert.equal(reopened.getMemory('a').entries[0].text,'我叫小林'); assert.equal(reopened.get('b','s'),undefined);
+  reopened.delete('a','s'); assert.equal(new SessionStore(file).get('a','s'),undefined); assert.equal(new SessionStore(file).getMemory('a').entries.length,1);
   writeFileSync(file,'BROKEN'); assert.throws(()=>new SessionStore(file),/原文件未覆盖/); assert.equal(readFileSync(file,'utf8'),'BROKEN');
 });
 test('fetch adapter emits valid SSE for a real Request and rejects missing session id', async () => {

@@ -188,6 +188,7 @@ export interface EmotionState {
 
 /** 对话轮次 */
 export interface Turn {
+  memoryEpoch?: number;
   role: 'user' | 'assistant';
   content: string;
   state: GlobalState;
@@ -198,6 +199,7 @@ export interface Turn {
 
 /** 会话状态 */
 export interface SessionState {
+  healthCheckpoint?: {at:string;turnCount:number};
   // 基础信息
   sessionId: string;
   userId: string;
@@ -206,6 +208,9 @@ export interface SessionState {
   lastActiveAt?: string;
   explicitMemories?: string[];
   tarotDraws?: number;
+  memoryContextEpoch?: number;
+  focusMemoryId?: string;
+  reflection?: import('../tarot/reflection-session').ReflectionSession;
 
   // 状态机状态
   currentState: GlobalState;
@@ -226,9 +231,7 @@ export interface SessionState {
 
   // 记忆相关
   userModelSnapshot: Record<string, unknown>;
-  retrievedMemories: unknown[];
-  memoryOperationsPending: unknown[];
-  kvCacheValid: boolean;
+  retrievedMemories: string[];
 
   // 塔罗相关
   tarotState?: TarotSubState;
@@ -242,8 +245,8 @@ export interface SessionState {
     subState: ExploreSubState;
     hypothesis?: string;
   };
-  activeDirectionCards: unknown[];
-  activeExperiments: unknown[];
+  activeDirectionCards: string[];
+  activeExperiments: string[];
 
   // 元数据
   lastStateChangeAt: string;
@@ -254,17 +257,19 @@ export interface SessionState {
 
 /** 编排器输入 */
 export interface OrchestratorInput {
+  memoryProfile?: import('../memory').MemoryProfile;
   userId: string;
   sessionId: string;
   userInput: string;
   sessionState?: SessionState;
   signal?: AbortSignal;
   onDelta?: (content: string) => Promise<void> | void;
-  backend?: 'cloud' | 'local';
+  backend?: 'cloud';
 }
 
 /** 编排器输出 */
 export interface OrchestratorOutput {
+  updatedMemory: import('../memory').MemoryProfile;
   response: string;
   updatedState: SessionState;
   metadata: {
@@ -274,12 +279,20 @@ export interface OrchestratorOutput {
     emotion: EmotionState;
     safetyResult: SafetyResult;
     memoryUsed: number;
+    memoryUpdated: number;
     processingTimeMs: number;
     mode?: 'demo' | 'live';
     quality?: { score: number; warnings: string[] };
     sources?: { source: string; source_url: string; license: string; score: number }[];
     analysisSource?: string;
-    backend?: 'cloud' | 'local';
+    backend?: 'cloud' | 'demo';
+    rag?: import('../emotion-rag').EmotionRagContext;
+    timings?: Record<string,number>;
+    health?: {status:string;message?:string};
+    intentSource?: 'merged-context'|'local-rules';
+    retrieval?: { mode:'semantic-hybrid' | 'lexical-fallback'; expanded:boolean; candidates:number; recalled:number };
+    continuity?: ReturnType<typeof import('../context/continuity').continuityView>;
+    reflection?: import('../tarot/reflection-session').ReflectionSession;
   };
 }
 
@@ -312,8 +325,6 @@ export interface OrchestratorConfig {
   emotionDecliningThreshold: number;
   /** 连续高情绪轮次阈值 */
   consecutiveHighEmotionThreshold: number;
-  /** 是否启用 KV Cache */
-  enableKvCache: boolean;
 }
 
 /** 默认配置 */
@@ -326,5 +337,4 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
   emotionIntensityThreshold: 0.7,
   emotionDecliningThreshold: 0.15,
   consecutiveHighEmotionThreshold: 3,
-  enableKvCache: true,
 };

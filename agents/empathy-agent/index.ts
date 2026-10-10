@@ -14,8 +14,10 @@ export function responseEvent(result: OrchestratorOutput) {
     emotion: { primary: m.emotion.primaryEmotion, intensity: m.emotion.intensity, valence: m.emotion.valence, trajectory: m.emotion.trajectory },
     empathy: { level: m.empathyLevel }, safety: { isSafe: !m.safetyResult.shouldBlock, riskLevel: m.safetyResult.riskLevel },
     state: { current: m.state, phase: phases[m.state] || m.state, turnCount: result.updatedState.turnCount },
-    memory: { memoriesUsed: m.memoryUsed, processingTimeMs: m.processingTimeMs }, mode: m.mode,
+    memory: { memoriesUsed: m.memoryUsed, memoriesUpdated: m.memoryUpdated, processingTimeMs: m.processingTimeMs }, mode: m.mode,
     sources: m.sources || [], analysisSource: m.analysisSource, backend: m.backend,
+    retrieval:m.retrieval, timings:m.timings, continuity:m.continuity, reflection:m.reflection, health:m.health,intentSource:m.intentSource,
+    rag: m.rag ? { status: m.rag.status, emotion: m.rag.emotion, direction: m.rag.direction, evidenceCount: m.rag.evidence.length } : undefined,
   };
 }
 
@@ -29,6 +31,9 @@ export function createAgent(env: Record<string, string>) {
     let body: unknown;
     try { body = await request.json(); } catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }); }
     const message = body && typeof body === 'object' ? (body as { message?: unknown }).message : undefined;
+    const backend = body && typeof body === 'object' ? (body as { backend?: unknown }).backend : undefined;
+    if (backend === 'local') return Response.json({ error: 'Local generation retired; message was not forwarded. Refresh to use cloud replies with local emotion RAG.' }, { status: 410 });
+    if (backend !== undefined && backend !== 'cloud') return Response.json({ error: 'Invalid backend' }, { status: 400 });
     if (typeof message !== 'string' || !message.trim() || message.length > 2000) return Response.json({ error: 'Message must contain 1–2000 characters' }, { status: 400 });
     if (active.has(sessionId)) return Response.json({ error: 'Session busy' }, { status: 409 });
     active.add(sessionId);

@@ -12,8 +12,8 @@
  * │    tarot           empathy-decision    emotion-recognition│
  * │    (塔罗破冰)      (共情决策)           (情感识别)        │
  * ├─────────────────────────────────────────────────────────┤
- * │    emotion-tags    emotion-tracker       safety          │
- * │    (情感标签)      (情绪追踪)            (安全机制)        │
+ * │    emotion-tags    emotion-tracker       context          │
+ * │    (情感标签)      (情绪证据趋势)        (联合检索)        │
  * └─────────────────────────────────────────────────────────┘
  */
 
@@ -22,7 +22,6 @@ export * from './emotion-tags';
 export * from './emotion-recognition';
 export * from './emotion-tracker';
 export * from './empathy-decision';
-export * from './safety';
 
 // ==================== 子系统模块 ====================
 export * from './memory';
@@ -33,6 +32,6 @@ export * from './intent';
 
 // ==================== 同名符号消歧 ====================
 // 多个子模块导出了同名成员，以下显式指定以主实现为准
-export type { EmotionTrend, EmotionState } from './emotion-tracker';
+export type { EmotionState } from './orchestrator/types';
 export type { EmpathyLevel } from './empathy-decision';
 export { SafetyClassifier } from './safety-classifier';

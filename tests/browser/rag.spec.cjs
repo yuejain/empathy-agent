@@ -1,0 +1,20 @@
+const {test,expect}=require('@playwright/test');
+test('cloud-only UI migrates the old selector and displays emotional direction and RAG fallback',async({page},testInfo)=>{
+ await page.addInitScript(()=>localStorage.setItem('empathy-backend','local'));
+ await page.route('**/api/health',route=>route.fulfill({json:{ok:true,mode:'live',model:'fixture-cloud',persistence:false,local:{available:true,indexDocuments:4000,role:'emotion-rag'}}}));
+ await page.goto('/');await expect(page.locator('#userInput')).toBeEnabled();
+ await expect(page.locator('#backend')).toHaveCount(0);await expect(page.locator('#replyModel')).toContainText('云端回复');
+ await expect(page.locator('#modeNotice')).toContainText('会发送给已配置的云端服务');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:`artifacts/${testInfo.project.name}-emotion-rag.png`,fullPage:true});
+ let sent;
+ const reply={type:'ai_response',content:'先听你说。',mode:'live',backend:'cloud',state:{phase:'倾听与共情',turnCount:1},memory:{},sources:[],rag:{status:'ready',emotion:{primary:'焦虑',uncertain:true},direction:{label:'先倾听与承接感受'},evidenceCount:2}};
+ await page.route('**/api/chat',route=>{sent=route.request().postDataJSON();return route.fulfill({contentType:'text/event-stream',body:`event: ai_response\ndata: ${JSON.stringify(reply)}\n\ndata: [DONE]\n\n`});});
+ await page.locator('#userInput').fill('只想倾诉');await page.locator('#sendButton').click();
+ await expect(page.locator('.emotion-note summary')).toContainText('先倾听');expect(sent.backend).toBeUndefined();
+ await page.locator('.emotion-note summary').click();await expect(page.locator('.emotion-note')).toContainText('不确定线索');
+ await expect(page.locator('#userInput')).toBeEnabled();reply.rag.status='unavailable';reply.rag.evidenceCount=0;
+ await page.locator('#userInput').fill('继续聊聊');await page.locator('#sendButton').click();
+ await expect(page.locator('#knowledgeStatus')).toContainText('RAG 不可用');
+ await page.locator('.emotion-note summary').last().click();await expect(page.locator('.emotion-note').last()).toContainText('本轮未引用检索语料');
+});

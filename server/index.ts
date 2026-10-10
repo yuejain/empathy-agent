@@ -9,6 +9,9 @@ import { responseEvent } from '../agents/empathy-agent';
 import { sseEvent } from '../agents/_shared';
 import { SessionStore } from './session-store';
 import { LocalKnowledge } from '../lib/local-knowledge';
+import { eligible, MemoryError, memoryView, mutateMemory } from '../lib/memory';
+import { validReflection } from '../lib/tarot/reflection-session';
+import { continuityOpening } from '../lib/context/continuity';
 
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
 const ID = /^[a-zA-Z0-9_-]{16,100}$/;
@@ -26,6 +29,10 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
     ['/', { content: readFileSync(resolve(ROOT, 'dist/public/index.html')), type: 'text/html; charset=utf-8' }],
     ['/app.js', { content: readFileSync(resolve(ROOT, 'dist/public/app.js')), type: 'text/javascript; charset=utf-8' }],
     ['/sse.js', { content: readFileSync(resolve(ROOT, 'dist/public/sse.js')), type: 'text/javascript; charset=utf-8' }],
+    ['/continuity.js', { content: readFileSync(resolve(ROOT, 'dist/public/continuity.js')), type: 'text/javascript; charset=utf-8' }],
+    ['/corpus.js', { content: readFileSync(resolve(ROOT, 'dist/public/corpus.js')), type: 'text/javascript; charset=utf-8' }],
+    ['/experiments.js', { content: readFileSync(resolve(ROOT, 'dist/public/experiments.js')), type: 'text/javascript; charset=utf-8' }],
+    ['/session-health.js', { content: readFileSync(resolve(ROOT, 'dist/public/session-health.js')), type: 'text/javascript; charset=utf-8' }],
     ['/styles.css', { content: readFileSync(resolve(ROOT, 'dist/public/styles.css')), type: 'text/css; charset=utf-8' }],
   ]);
   const server = createServer(async (req, res) => {
@@ -47,17 +54,60 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
         json(res, 200, { ok: true, mode: gateway.mode, model: gateway.mode === 'live' ? gateway.model : null,
           persistence: env.SESSION_PERSISTENCE !== 'false', maxMessageLength: 2000, local: await knowledge.health() }); return;
       }
-      if (!['/api/session', '/api/chat', '/empathy-agent', '/api/stop'].includes(url.pathname)) throw new HttpError(404, '接口不存在。');
+      if (!['/api/session', '/api/session/health', '/api/chat', '/empathy-agent', '/api/stop', '/api/memories','/api/corpus'].includes(url.pathname)) throw new HttpError(404, '接口不存在。');
       const cookie = req.headers.cookie?.split(';').map(x => x.trim()).find(x => x.startsWith('empathy-owner='))?.slice('empathy-owner='.length);
       const owner = cookie && /^[0-9a-f-]{36}$/.test(cookie) ? cookie : randomUUID();
-      res.setHeader('Set-Cookie', `empathy-owner=${owner}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800`);
+      res.setHeader('Set-Cookie', `empathy-owner=${owner}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`);
       const sessionId = req.headers['makers-conversation-id'];
       if (typeof sessionId !== 'string' || !ID.test(sessionId)) throw new HttpError(400, '会话编号无效，请刷新页面。');
       const key = `${owner}:${sessionId}`;
+      const ownerBusy = () => [...active.keys()].some(k => k.startsWith(owner + ':'));
+      if(url.pathname==='/api/session/health') {
+        if(req.method!=='GET')throw new HttpError(405,'请求方法不支持。');
+        json(res,200,orchestrator.checkSessionHealth(key,store.get(owner,sessionId)));return;
+      }
+      if (url.pathname === '/api/corpus') {
+        if (!['GET','POST'].includes(req.method || '')) throw new HttpError(405,'请求方法不支持。');
+        let operation: {action:'rebuild'|'update'|'retrain'|'rollback'} | {scheduleHours:0|24|168} | undefined;
+        if (req.method === 'POST') {
+          if (!req.headers['content-type']?.toLowerCase().startsWith('application/json')) throw new HttpError(415,'请使用 JSON 请求。');
+          const body = await readBody(req) as any;
+          if (!body || typeof body !== 'object' || Object.keys(body).length !== 1) throw new HttpError(400,'语料操作格式无效。');
+          if (['rebuild','update','retrain','rollback'].includes(body.action)) operation={action:body.action};
+          else if ([0,24,168].includes(body.scheduleHours)) operation={scheduleHours:body.scheduleHours};
+          else throw new HttpError(400,'语料操作格式无效。');
+        }
+        try { json(res,200,await knowledge.maintenance(operation)); } catch { throw new HttpError(503,'语料服务未连接或已有更新任务，请稍后刷新状态。'); }
+        return;
+      }
+      if (url.pathname === '/api/memories') {
+        if (req.method === 'GET') { json(res, 200, memoryView(store.getMemory(owner), Date.now())); return; }
+        if (req.method !== 'POST') throw new HttpError(405, '请求方法不支持。');
+        if (!req.headers['content-type']?.toLowerCase().startsWith('application/json')) throw new HttpError(415, '请使用 JSON 请求。');
+        const body = await readBody(req);
+        if (ownerBusy()) throw new HttpError(409, '请先停止当前回复，再修改长期记忆。');
+        const before = store.getMemory(owner);
+        const updated = mutateMemory(before, body, { sessionId: key, turnId: 'manual', now: Date.now() });
+        store.setMemory(owner, updated, before.revision);
+        json(res, 200, memoryView(updated, Date.now())); return;
+      }
       if (url.pathname === '/api/session') {
+        if(req.method==='POST') {
+          if(!req.headers['content-type']?.startsWith('application/json'))throw new HttpError(415,'请使用 JSON 请求。');
+          const body=await readBody(req) as any;
+          if(!body || Object.keys(body).length!==1 || !['continue','close'].includes(body.action))throw new HttpError(400,'会话操作格式无效。');
+          if(ownerBusy())throw new HttpError(409,'请先停止当前回复。');
+          const state=store.get(owner,sessionId);if(!state)throw new HttpError(404,'会话不存在。');
+          if(state.currentState==='SAFETY_PROTOCOL')throw new HttpError(409,'安全支持期间请直接在对话中说明你的近况。');
+          const now=new Date().toISOString();state.lastActiveAt=now;
+          if(body.action==='continue'){state.healthCheckpoint={at:now,turnCount:state.turnCount};if(state.currentState==='SESSION_CLOSE')state.currentState='EMPATHY_PHASE';}
+          else {state.currentState='SESSION_CLOSE';state.currentSubState=undefined;}
+          store.set(owner,sessionId,state);json(res,200,{health:orchestrator.checkSessionHealth(key,state)});return;
+        }
         if (req.method === 'GET') {
           const state = store.get(owner, sessionId);
-          json(res, 200, { history: state?.recentHistory || [], turnCount: state?.turnCount || 0, state: state?.currentState || 'INIT', memories: state?.explicitMemories || [] }); return;
+          const memory = store.getMemory(owner);
+          json(res, 200, { history: state?.recentHistory || [], turnCount: state?.turnCount || 0, state: state?.currentState || 'INIT', memories: memory.entries.filter(e => eligible(e, Date.now())).map(e => e.text), memory: memoryView(memory, Date.now()),reflection:validReflection(state?.reflection,memory.contextEpoch),opening:continuityOpening(memory),health:orchestrator.checkSessionHealth(key,state) }); return;
         }
         if (req.method === 'DELETE') {
           if (active.has(key)) throw new HttpError(409, '请先停止当前回复，再清除记录。');
@@ -72,10 +122,10 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
       const body = await readBody(req);
       const message = body && typeof body === 'object' ? (body as { message?: unknown }).message : undefined;
       const backend = body && typeof body === 'object' ? (body as { backend?: unknown }).backend : undefined;
-      if (backend !== undefined && backend !== 'cloud' && backend !== 'local') throw new HttpError(400, '回复模型无效。');
-      if (backend === 'local' && !(await knowledge.health()).generator) throw new HttpError(503, '本地生成模型尚未启动，请启动本地模型服务或选择云端模型。');
+      if (backend === 'local') throw new HttpError(410, '本地生成已停用，未转发此消息。请刷新页面：本地模型负责情绪 RAG，云端模型负责回复。');
+      if (backend !== undefined && backend !== 'cloud') throw new HttpError(400, '回复模型无效。');
       if (typeof message !== 'string' || !message.trim() || message.length > 2000) throw new HttpError(400, '消息长度应为 1–2000 个字符。');
-      if (active.has(key)) throw new HttpError(409, '这段会话正在回复，请稍后再试。');
+      if (ownerBusy()) throw new HttpError(409, '你的另一段对话正在回复，请稍后再试。');
       if (active.size >= 8) throw new HttpError(503, '服务繁忙，请稍后再试。');
       const now = Date.now();
       for (const [id, entry] of rate) if (entry.until < now) rate.delete(id);
@@ -91,14 +141,15 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
       res.flushHeaders();
       const heartbeat = setInterval(() => { if (!res.destroyed) res.write(sseEvent({}, 'ping')); }, 10000);
       try {
-        const result = await orchestrator.processTurn({ userId: owner, sessionId: key, userInput: message.trim(), sessionState: store.get(owner, sessionId), signal: controller.signal, backend,
+        const memory = store.getMemory(owner);
+        const result = await orchestrator.processTurn({ userId: owner, sessionId: key, userInput: message.trim(), sessionState: store.get(owner, sessionId), memoryProfile: memory, signal: controller.signal, backend,
           onDelta: async content => {
             controller.signal.throwIfAborted();
             if (!res.write(sseEvent({ type: 'ai_delta', content }, 'ai_delta'))) await once(res, 'drain', { signal: controller.signal });
           },
         });
         controller.signal.throwIfAborted();
-        store.set(owner, sessionId, result.updatedState);
+        store.set(owner, sessionId, result.updatedState, result.updatedMemory, memory.revision);
         res.write(sseEvent(responseEvent(result), 'ai_response'));
       } catch (error) {
         if (!res.destroyed && !controller.signal.aborted) res.write(sseEvent({ type: 'error_message', code: error instanceof GatewayError ? error.code : 'INTERNAL', content: error instanceof GatewayError ? error.message : '处理或保存失败，请重试。' }, 'error_message'));
@@ -108,7 +159,7 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
         if (!res.destroyed) res.end('data: [DONE]\n\n');
       }
     } catch (error) {
-      if (!res.headersSent) json(res, error instanceof HttpError ? error.status : 500, { error: error instanceof HttpError ? error.message : '服务暂时不可用。' });
+      if (!res.headersSent) json(res, error instanceof HttpError || error instanceof MemoryError ? error.status : 500, { error: error instanceof HttpError || error instanceof MemoryError ? error.message : '服务暂时不可用。' });
       else res.end();
     }
   });

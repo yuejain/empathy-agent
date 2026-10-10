@@ -8,12 +8,9 @@ try {
 let controller = null, ready = false, history = [], mode = 'demo', pendingStop = null;
 let cloudModel = '';
 function modelNotice() {
-  $('modeNotice').textContent = $('backend').value === 'local'
-    ? '本地小模型（实验版）：消息在本机处理。中文情绪标注和训练样本有限，回复可能不准确，可随时切换模型。'
-    : mode === 'demo' ? '当前为本地规则演示，回复由模板生成。'
-    : `使用模型 ${cloudModel}。消息、本会话上下文及检索片段会交给你配置的模型服务处理。`;
+  $('modeNotice').textContent = mode === 'demo' ? '当前为本地规则演示，回复由模板生成。配置云端模型后，可使用情绪 RAG 增强回复。'
+    : `本地小模型提供情绪分析和检索参考，由 ${cloudModel} 生成回复。消息、情绪线索、近期上下文、相关长期记忆及检索片段会发送给已配置的云端服务。`;
 }
-$('backend').addEventListener('change', () => { try { localStorage.setItem('empathy-backend', $('backend').value); } catch {} modelNotice(); });
 const phaseNames = { INIT: '开始倾听', EMPATHY_PHASE: '倾听与共情', EXPLORE_PHASE: '一起梳理', ACTION_PHASE: '尝试小步行动', REVIEW_PHASE: '回顾与整理', TAROT_ENTRY: '卡牌联想', SESSION_CLOSE: '暂时告一段落', SAFETY_PROTOCOL: '安全支持' };
 const headers = () => ({ 'Content-Type': 'application/json', 'makers-conversation-id': sessionId });
 function showError(message) { $('error').textContent = message; $('error').hidden = !message; }
@@ -21,7 +18,11 @@ function setBusy(busy) {
   $('userInput').disabled = !ready || busy;
   $('sendButton').disabled = !ready || busy || !$('userInput').value.trim();
   $('newChat').disabled = $('clearChat').disabled = $('exportChat').disabled = !ready || busy;
-  $('backend').disabled = $('playGame').disabled = $('game').disabled = !ready || busy;
+  $('playGame').disabled = $('game').disabled = !ready || busy;
+  $('openMemory').disabled = !ready || busy;
+  $('openExperiments').disabled = !ready || busy;
+  $('sessionHealth').querySelectorAll('button').forEach(button=>{button.disabled=!ready||busy;});
+  $('reflectionChoices').querySelectorAll('button').forEach(b=>{b.disabled=!ready || busy;});
   document.querySelectorAll('[data-prompt]').forEach(b => b.disabled = !ready || busy);
   $('stopButton').hidden = !busy; $('pending').hidden = !busy;
 }
@@ -50,6 +51,11 @@ async function loadSession() {
   $('turnCount').textContent = data.turnCount;
   $('phase').textContent = phaseNames[data.state] || data.state;
   $('memoryCount').textContent = data.memories.length;
+  renderReflection(data.reflection);
+  renderSessionHealth(data.health);
+  const preference=data.memory?.continuity?.preferredEntry;
+  if(!data.history.length && preference && preference!=='direct')$('game').value=preference;
+  const opening=document.querySelector('#welcome > p');if(opening && data.opening)opening.textContent=data.opening;
 }
 async function initialize() {
   try {
@@ -57,15 +63,15 @@ async function initialize() {
     if (!response.ok) throw new Error('服务状态检查失败，请刷新页面重试。');
     const health = await response.json(); mode = health.mode;
     cloudModel = health.model;
-    try { if (localStorage.getItem('empathy-backend') === 'local') $('backend').value = 'local'; } catch {}
-    $('backend').querySelector('[value="local"]').textContent = health.local?.generator ? '本地 Qwen3 · 实验版' : '本地小模型（未启动）';
-    $('knowledgeStatus').textContent = health.local?.available ? `情绪语料库 · ${health.local.indexDocuments} 条` : '情绪语料库未连接';
+    try { localStorage.removeItem('empathy-backend'); } catch {}
+    $('replyModel').textContent = mode === 'demo' ? '规则演示' : `云端回复 · ${cloudModel}`;
+    $('knowledgeStatus').textContent = health.local?.available ? `本地情绪 RAG · ${health.local.indexDocuments} 条` : '本地情绪 RAG 未连接 · 使用基础情绪线索';
     $('mode').textContent = mode === 'demo' ? '演示模式' : '模型已配置';
     $('modeNotice').textContent = mode === 'demo'
       ? '当前为本地规则演示，回复由模板生成。配置本地 .env 并重启服务后，可使用真实模型对话。'
       : `使用模型 ${health.model}。发送的消息及本会话上下文会交给你配置的模型服务处理。`;
     modelNotice();
-    $('storageNote').textContent = health.persistence ? '最近 10 轮与明确保存的记忆存于本机。7 天未活动后清理。' : '仅存于本次服务内存，服务重启后清除。';
+    $('storageNote').textContent = health.persistence ? '聊天保留最近 10 轮，7 天未活动后清理。长期记忆独立保存在本机，按类别更新和过期。' : '聊天与长期记忆仅存于本次服务内存，服务重启后清除。';
     await loadSession(); ready = true; setBusy(false); $('userInput').focus();
   } catch (error) { $('mode').textContent = '连接失败'; showError(error.message); }
 }
@@ -77,7 +83,7 @@ async function sendMessage() {
   const sentRow = addMessage('user', message); $('userInput').value = '';
   let received = false, finished = false, partialRow = null, partialText = '';
   try {
-    const response = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message, backend: $('backend').value }), signal: controller.signal });
+    const response = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message }), signal: controller.signal });
     if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) throw new Error('服务没有返回有效的消息流。');
     const reader = response.body.getReader(), decoder = new TextDecoder();
     const parser = createSSEParser(event => {
@@ -96,6 +102,20 @@ async function sendMessage() {
         if (partialRow) partialRow.querySelector('.message-content').textContent = data.content;
         else addMessage('assistant', data.content, data.mode === 'demo' ? '本地演示回复' : '');
         const row = partialRow || $('messages').lastElementChild;
+        renderReflection(data.reflection);
+        renderSessionHealth(data.health);
+        if (data.rag?.direction) {
+          const note = document.createElement('details'); note.className = 'source-note emotion-note';
+          const title = document.createElement('summary'); title.textContent = `本轮情绪参考 · ${data.rag.direction.label}`; note.appendChild(title);
+          const text = document.createElement('p');
+          const fallback = ['unavailable','not_configured'].includes(data.rag.status);
+          text.textContent = fallback ? '本地 RAG 当前不可用，云端使用当前原话和基础情绪线索作答，本轮未引用检索语料。'
+            : `${data.rag.emotion.primary}（${data.rag.emotion.uncertain ? '不确定线索，请以你的感受为准' : '模型线索，非诊断'}）。${data.rag.status === 'no_matches' ? '未找到合适语料。' : `参考 ${data.rag.evidenceCount} 条语料。`}`;
+          note.appendChild(text); row.querySelector('.message-content').appendChild(note);
+          if(data.retrieval){const retrieval=document.createElement('p');retrieval.textContent=`个人记忆：${data.retrieval.mode==='semantic-hybrid'?'语义与词项联合检索':'词项检索'}，参考 ${data.retrieval.recalled} 条${data.retrieval.expanded?'；已结合前文理解续聊':''}。`;note.appendChild(retrieval);}
+          if (fallback) $('knowledgeStatus').textContent = '本轮 RAG 不可用 · 已使用基础情绪线索';
+          else $('knowledgeStatus').textContent = '本地情绪 RAG 已参与本轮回复';
+        }
         if (Array.isArray(data.sources) && data.sources.length) {
           const note = document.createElement('details'); note.className = 'source-note';
           const title = document.createElement('summary'); title.textContent = '本轮参考语料来源'; note.appendChild(title);
@@ -111,6 +131,11 @@ async function sendMessage() {
         history.push({ role: 'user', content: message }, { role: 'assistant', content: data.content });
         $('phase').textContent = data.state.phase;
         $('turnCount').textContent = data.state.turnCount;
+        if (data.memory?.memoriesUpdated || data.memory?.memoriesUsed) {
+          const note = document.createElement('div'); note.className = 'message-meta';
+          note.textContent = `长期记忆：${data.memory.memoriesUpdated || 0} 次更新 · 本轮参考 ${data.memory.memoriesUsed || 0} 条`;
+          row.querySelector('.message-content').appendChild(note);
+        }
       }
     });
     try {
@@ -140,7 +165,7 @@ async function sendMessage() {
   }
 }
 $('chatForm').addEventListener('submit', event => { event.preventDefault(); sendMessage(); });
-$('playGame').addEventListener('click', () => { $('userInput').value = {tarot:'我想抽一张塔罗牌，做正逆位联想练习。',iching:'我想做周易六爻意象联想练习。',needs:'我想抽一张情绪需要卡。'}[$('game').value]; sendMessage(); });
+$('playGame').addEventListener('click', () => { $('userInput').value = {tarot:'我想抽一张塔罗牌，做正逆位联想练习。',iching:'我想做周易六爻意象联想练习。',needs:'我想抽一张情绪需要卡。',image:'我想做意象联想练习。',scenario:'我想做场景联想练习。',keyword:'我想做关键词联想练习。'}[$('game').value]; sendMessage(); });
 $('userInput').addEventListener('input', () => { $('sendButton').disabled = !ready || !!controller || !$('userInput').value.trim(); });
 $('userInput').addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendMessage(); }
@@ -159,7 +184,7 @@ $('newChat').addEventListener('click', async () => {
   try { await loadSession(); } catch (error) { showError(error.message); } finally { setBusy(false); $('userInput').focus(); }
 });
 $('clearChat').addEventListener('click', async () => {
-  if (!confirm('清除这段对话及其保存的记忆？此操作不能撤销。')) return;
+  if (!confirm('清除这段聊天记录？长期记忆将保留，可在“长期记忆”中单独清空。')) return;
   setBusy(true); showError('');
   try { await api('/api/session', { method: 'DELETE' }); await loadSession(); } catch (error) { showError(error.message); } finally { setBusy(false); }
 });
@@ -168,4 +193,80 @@ $('exportChat').addEventListener('click', () => {
   const url = URL.createObjectURL(new Blob([content || '暂无聊天记录'], { type: 'text/plain;charset=utf-8' }));
   const link = document.createElement('a'); link.href = url; link.download = '留白-对话记录.txt'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
+let memoryData = null, editingMemory = null, memoryBusy = false;
+const memoryStatuses = { active: '有效', pending: '待核对', superseded: '被新信息替代', resolved: '已结束 / 撤回', expired: '已过期' };
+const memorySources = { explicit: '明确要求记住', statement: '聊天自动提取', extracted: '模型提取原话', confirmed: '手动添加 / 更正', legacy: '旧版记录迁移' };
+const memoryCertainty = { stated: '用户陈述', inferred: '推测线索', tentative: '考虑中 / 计划' };
+function memoryError(message) { $('memoryError').textContent = message; $('memoryError').hidden = !message; }
+function memoryControls(busy) {
+  memoryBusy = busy;
+  $('memoryDialog').querySelectorAll('button,input,select,textarea').forEach(node => { if (node.id !== 'closeMemory') node.disabled = busy; });
+}
+function resetMemoryForm() {
+  editingMemory = null; $('memoryText').value = ''; $('saveMemory').textContent = '添加记忆'; $('cancelMemoryEdit').hidden = true;
+}
+function renderMemory() {
+  if (!memoryData) return;
+  $('captureMemory').checked = memoryData.settings.capture;
+  $('recallMemory').checked = memoryData.settings.recall;
+  $('memoryCount').textContent = memoryData.activeCount;
+  $('memorySummary').textContent = `${memoryData.activeCount} 条有效 · ${memoryData.pendingCount} 条待核对`;
+  renderContinuity(memoryData.continuity);
+  $('memoryList').replaceChildren();
+  const filter = $('memoryFilter').value;
+  const items = memoryData.entries.filter(e => filter === 'all' || filter === 'history' && !['active', 'pending'].includes(e.status) || e.status === filter);
+  if (!items.length) { const p = document.createElement('p'); p.className = 'memory-empty'; p.textContent = '这里还没有记忆。聊聊近况，或者手动添加一条。'; $('memoryList').appendChild(p); }
+  for (const item of items) {
+    const card = document.createElement('article'); card.className = 'memory-entry'; card.dataset.memoryId = item.id;
+    const badge = document.createElement('div'); badge.className = 'memory-badge'; badge.textContent = `${item.label} · ${memoryStatuses[item.status]} · ${memoryCertainty[item.certainty]}`;
+    const text = document.createElement('p'); text.className = 'memory-text'; text.textContent = item.text;
+    const time = document.createElement('p'); time.className = 'memory-hint'; time.textContent = `${memorySources[item.source]} · 更新 ${new Date(item.updatedAt).toLocaleString()} · 有效至 ${new Date(item.expiresAt).toLocaleString()}`;
+    const details = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = '查看原话依据'; details.appendChild(summary);
+    for (const evidence of item.evidence) { const quote = document.createElement('blockquote'); quote.textContent = evidence.quote; details.appendChild(quote); }
+    const actions = document.createElement('div'); actions.className = 'memory-actions';
+    const action = (label, fn) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'text-button'; button.textContent = label; button.addEventListener('click', fn); actions.appendChild(button); };
+    action('更正', () => { editingMemory = item.id; $('memoryKind').value = item.kind; $('memoryText').value = item.text; $('saveMemory').textContent = '保存更正'; $('cancelMemoryEdit').hidden = false; $('memoryText').focus(); });
+    if (item.status === 'pending' || item.status === 'expired') action('确认仍然适用', () => changeMemory({ action: 'confirm', id: item.id }));
+    if (item.status === 'active' && ['activity', 'decision'].includes(item.kind)) action('结束 / 撤回', () => changeMemory({ action: 'resolve', id: item.id }));
+    action('删除', () => changeMemory({ action: 'delete', id: item.id }));
+    if(['activity','decision'].includes(item.kind) && ['active','resolved'].includes(item.status)) {
+      action(item.experiment?'实验与复盘':'建立行动实验',()=>{$('memoryDialog').close();openExperiments(item.id);});
+      const controls=document.createElement('div');controls.className='progress-controls';
+      const select=document.createElement('select');select.setAttribute('aria-label','事项进度');
+      for(const [value,label] of Object.entries(progressNames)){const option=document.createElement('option');option.value=value;option.textContent=label;select.appendChild(option);}
+      select.value=item.progress || 'in_progress';
+      const due=document.createElement('input');due.type='date';due.setAttribute('aria-label','目标日期');
+      if(item.dueAt){const date=new Date(item.dueAt);due.value=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
+      const update=()=>changeMemory({action:'progress',id:item.id,progress:select.value,dueAt:due.value?new Date(due.value+'T23:59:59').getTime():null});
+      select.addEventListener('change',update);due.addEventListener('change',update);controls.append(select,due);actions.appendChild(controls);
+    }
+    card.append(badge, text, time, details, actions); $('memoryList').appendChild(card);
+  }
+}
+async function refreshMemory() {
+  if (memoryBusy) return;
+  memoryControls(true); memoryError('');
+  try { memoryData = await (await api('/api/memories')).json(); renderMemory(); }
+  catch (error) { memoryError(error.message); }
+  finally { memoryControls(false); }
+}
+async function changeMemory(operation) {
+  if (memoryBusy || !memoryData) return;
+  memoryControls(true); memoryError('');
+  try {
+    memoryData = await (await api('/api/memories', { method: 'POST', body: JSON.stringify({ revision: memoryData.revision, ...operation }) })).json();
+    if (['add', 'edit', 'clear'].includes(operation.action) || operation.id === editingMemory) resetMemoryForm();
+    renderMemory();
+  } catch (error) { renderMemory(); memoryError(error.message); }
+  finally { memoryControls(false); }
+}
+$('openMemory').addEventListener('click', () => { $('memoryDialog').showModal(); refreshMemory(); });
+$('closeMemory').addEventListener('click', () => $('memoryDialog').close());
+$('refreshMemory').addEventListener('click', refreshMemory);
+$('memoryFilter').addEventListener('change', renderMemory);
+$('cancelMemoryEdit').addEventListener('click', resetMemoryForm);
+$('captureMemory').addEventListener('change', () => changeMemory({ action: 'settings', capture: $('captureMemory').checked }));
+$('recallMemory').addEventListener('change', () => changeMemory({ action: 'settings', recall: $('recallMemory').checked }));
+$('memoryForm').addEventListener('submit', event => { event.preventDefault(); changeMemory({ action: editingMemory ? 'edit' : 'add', ...(editingMemory ? { id: editingMemory } : {}), kind: $('memoryKind').value, text: $('memoryText').value.trim() }); });
+$('clearMemory').addEventListener('click', () => { if (confirm('清空全部长期记忆？旧聊天将退出后续模型上下文，界面中已有的聊天文字仍保留。')) changeMemory({ action: 'clear' }); });
 setBusy(false); initialize();

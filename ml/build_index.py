@@ -1,5 +1,5 @@
 """Rebuild retrieval artifacts without retraining or touching the classifier's evaluation."""
-import collections,json,re
+import collections,json,re,uuid
 from corpus import ROOT,DATA,read_jsonl,write_json,digest
 
 def build(encoder,rows):
@@ -22,13 +22,16 @@ def build(encoder,rows):
         row['emotions']=sorted(set(row['emotions'])|{label for label,pattern in retrieval_terms.items() if re.search(pattern,row['text'],re.I)})
         row['retrieval_label_origin']='source-labels-plus-index-keywords'
     vectors=encoder.encode([r['text'] for r in documents],batch_size=48,normalize_embeddings=True,show_progress_bar=True,convert_to_numpy=True)
-    index=DATA/'index';index.mkdir(parents=True,exist_ok=True)
+    root=DATA/'index';version=uuid.uuid4().hex
+    index=root/'versions'/version;index.mkdir(parents=True,exist_ok=True)
     np.save(index/'vectors.npy',vectors.astype(np.float32),allow_pickle=False);write_json(index/'documents.json',documents)
     metadata={'documents':len(documents),'languages':dict(collections.Counter(r['language'] for r in documents)),
         'categories':dict(collections.Counter(r['category'] for r in documents)),'dimensions':vectors.shape[1],
         'corpus_sha256':digest((DATA/'processed/corpus.jsonl').read_bytes()),'split':'train-only',
         'documents_sha256':digest((index/'documents.json').read_bytes()),'vectors_sha256':digest((index/'vectors.npy').read_bytes())}
     write_json(index/'manifest.json',metadata)
+    # Publish an immutable, fully written snapshot with one atomic pointer replacement.
+    pointer=root/'current.json.tmp';write_json(pointer,{'version':version});pointer.replace(root/'current.json')
     report_path=DATA/'reports/classifier.json'
     if report_path.exists():
         report=json.loads(report_path.read_text(encoding='utf-8'))

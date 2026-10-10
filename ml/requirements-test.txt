@@ -1,0 +1,4 @@
+# Lightweight tests use a fake encoder/head; no model download, torch, or GPU required.
+requests>=2.32,<3
+numpy>=1.26,<3
+beautifulsoup4>=4.12,<5

@@ -1,0 +1,4 @@
+# Historical generation experiments only; not used by the application or default RAG setup.
+-r requirements.txt
+peft>=0.15,<1
+accelerate>=1.2,<2

@@ -1,10 +1,6 @@
-import { ChatGateway } from '../gateway';
 /**
- * 意图分类器 - 三级级联识别
- *
- * Level 0: 安全快筛（关键词 + 正则）< 5ms
- * Level 1: 粗分类（轻量分类器）< 20ms
- * Level 2: 上下文增强分类（LLM）< 150ms
+ * 本地意图规则与安全信号快筛。
+ * 上下文意图由编排器的合并分析请求提供，此模块不发起云端调用。
  */
 
 import {
@@ -160,100 +156,13 @@ function coarseClassify(input: string): {
   };
 }
 
-// ==================== Level 2: 上下文增强分类 ====================
-
-/** Level 2: 上下文增强分类（使用 LLM） */
-async function contextEnhancedClassify(
-  input: string,
-  env: Record<string, string>,
-  context: {
-    recentHistory: string[];
-    currentState: string;
-    emotion: { primary: string; intensity: number };
-    userValues: string[];
-    userThemes: string[];
-  }
-): Promise<{
-  intent: InteractionIntent;
-  subIntent?: SubIntent;
-  confidence: number;
-  ambiguityNote?: string;
-  contextClues: string[];
-}> {
-  const prompt = `你是一个对话意图分类器。在更丰富的上下文中判断用户意图。
-
-【用户当前输入】："${input}"
-
-【对话历史（最近几轮）】：
-${context.recentHistory.map((h, i) => `${i + 1}. ${h}`).join('\n')}
-
-【当前状态机状态】：${context.currentState}
-
-【用户情绪】：${context.emotion.primary}（强度 ${context.emotion.intensity.toFixed(2)}）
-
-【用户已知信息】：
-- 价值偏好：${context.userValues.join('、') || '暂无'}
-- 反复主题：${context.userThemes.join('、') || '暂无'}
-
-请从以下意图中选择 1-2 个（按相关性排序），并给出置信度：
-
-1. L2.1 情绪倾诉 — 想表达和释放情绪
-2. L2.2 探索求助 — 想深入理解自己的困惑
-3. L2.3 行动讨论 — 在讨论具体行动或决定
-4. L2.4 复盘回顾 — 想回顾之前的探索
-5. L2.5 寻求建议 — 想要外部建议或推荐
-6. L2.6 信息查询 — 询问产品功能或AI身份
-7. L2.7 元对话 — 评论对话本身的方式或质量
-8. L2.8 关系建立 — 试探和建立信任
-9. L2.9 意图不明 — 无法明确判断
-
-输出JSON格式：
-{
-  "primary_intent": "L2.x",
-  "sub_intent": "L2.xa 或 null",
-  "confidence": 0.0-1.0,
-  "secondary_intent": "L2.x 或 null",
-  "ambiguity_note": "如果存在歧义说明",
-  "context_clues": ["判断线索1", "判断线索2"],
-  "reasoning": "一句话判断依据"
-}`;
-
-  try {
-    const content = await new ChatGateway(env).complete([
-      { role: 'system', content: '你是对话意图分类器，严格按 JSON 格式输出。' },
-      { role: 'user', content: prompt },
-    ], { temperature: 0.1, maxTokens: 300 });
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON');
-
-    const parsed = JSON.parse(jsonMatch[0]);
-
-    return {
-      intent: parsed.primary_intent || 'L2.9_ambiguous_intent',
-      subIntent: parsed.sub_intent || undefined,
-      confidence: parsed.confidence || 0.5,
-      ambiguityNote: parsed.ambiguity_note || undefined,
-      contextClues: parsed.context_clues || [],
-    };
-  } catch (error) {
-    // Fall back to the coarse classifier without logging user data.
-    return {
-      intent: 'L2.9_ambiguous_intent',
-      confidence: 0.3,
-      contextClues: ['分类失败，使用默认策略'],
-    };
-  }
-}
-
 // ==================== 意图分类器主类 ====================
 
 export class IntentClassifier {
   private config: IntentConfig;
-  private env: Record<string, string>;
 
-  constructor(env: Record<string, string>, config: Partial<IntentConfig> = {}) {
+  constructor(config: Partial<IntentConfig> = {}) {
     this.config = { ...DEFAULT_INTENT_CONFIG, ...config };
-    this.env = env;
   }
 
   /**
@@ -303,36 +212,13 @@ export class IntentClassifier {
       };
     }
 
-    // ═══ Level 2: 上下文增强分类 ═══
-    if (this.config.enableContextEnhanced) {
-      const level2Result = await contextEnhancedClassify(input, this.env, {
-        recentHistory: context.recentHistory,
-        currentState: context.currentState,
-        emotion: context.emotion,
-        userValues: context.userValues || [],
-        userThemes: context.userThemes || [],
-      });
-
-      return {
-        isSafetyIntent: false,
-        primaryIntent: level2Result.intent,
-        subIntent: level2Result.subIntent,
-        confidence: level2Result.confidence,
-        recognitionLevel: 2,
-        reasoning: `Level 2 上下文增强分类`,
-        ambiguityNote: level2Result.ambiguityNote,
-        contextClues: level2Result.contextClues,
-        safetyAttention: this.assessSafetyAttention(input),
-      };
-    }
-
     // 降级：使用 Level 1 结果
     return {
       isSafetyIntent: false,
       primaryIntent: level1Result.intent,
       confidence: level1Result.confidence,
       recognitionLevel: 1,
-      reasoning: 'Level 2 未启用，使用 Level 1 结果',
+      reasoning: '本地分类；上下文分析由编排器合并调用后覆盖',
       contextClues: [],
       safetyAttention: this.assessSafetyAttention(input),
     };

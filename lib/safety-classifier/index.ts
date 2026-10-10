@@ -32,25 +32,3 @@ export type { CrisisKeywordEntry, CrisisPatternEntry, CrisisProtocol } from './k
 
 // 四层检测架构
 export { RuleLayer, ModelLayer, ContextLayer, FusionLayer, SafetyClassifier } from './classifier';
-
-// 训练数据
-export {
-  CLINICAL_SAMPLES,
-  PUBLIC_DATASET_SAMPLES,
-  SYNTHETIC_SAMPLES,
-  RED_TEAM_TEST_CASES,
-  AnnotationStatisticsCalculator,
-  DataAugmenter,
-  TrainingDataExporter,
-  getAllTrainingSamples,
-  getAllRedTeamTestCases,
-} from './training-data';
-
-// 训练脚本
-export {
-  TrainingManager,
-  splitDataset,
-  generatePythonTrainingScript,
-  generateDataPreparationScript,
-} from './training-script';
-export type { TrainingConfig, DatasetSplit } from './training-script';

@@ -50,10 +50,11 @@ def read_jsonl(path):
             if line.strip(): yield json.loads(line)
 
 class Fetcher:
-    def __init__(self, delay=1.0):
+    def __init__(self, delay=1.0, refresh=False):
         self.session = requests.Session()
         self.session.headers['User-Agent'] = USER_AGENT
         self.delay, self.last, self.receipts, self.robots = delay, {}, [], {}
+        self.refresh = refresh
 
     def get(self, url, limit=100_000_000, robots=False):
         host = urlsplit(url).hostname
@@ -67,13 +68,15 @@ class Fetcher:
                 parser = RobotFileParser(); parser.parse(rules); self.robots[origin] = parser
             if not self.robots[origin].can_fetch(USER_AGENT, url): raise ValueError('robots.txt disallows this URL')
         cache = DATA / 'cache' / digest(url)
-        if cache.exists(): payload = cache.read_bytes()
+        pinned = bool(re.search(r'/[0-9a-f]{40}/',url))
+        refresh = self.refresh and not pinned
+        if cache.exists() and not refresh: payload = cache.read_bytes()
         else:
             cache.parent.mkdir(parents=True, exist_ok=True)
             temp = cache.with_suffix('.part')
             for attempt in range(5):
                 time.sleep(max(0, self.delay - (time.monotonic() - self.last.get(host, 0))))
-                offset = temp.stat().st_size if temp.exists() else 0
+                offset = temp.stat().st_size if temp.exists() and not refresh else 0
                 try:
                     with self.session.get(url, timeout=(15, 90), stream=True, headers={'Range':f'bytes={offset}-'} if offset else {}) as response:
                         self.last[host] = time.monotonic(); response.raise_for_status()
@@ -194,9 +197,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--sources',default=str(ROOT/'ml/sources.json'))
     parser.add_argument('--only',nargs='*')
+    parser.add_argument('--refresh',action='store_true',help='Refresh mutable sources; pinned snapshots remain cached')
     args = parser.parse_args()
     config = json.loads(Path(args.sources).read_text(encoding='utf-8'))
-    fetch = Fetcher(); rows=[]; failures=[]; selected=[]
+    fetch = Fetcher(refresh=args.refresh); rows=[]; failures=[]; selected=[]
     adapters={'goemotions':collect_go,'oasst':collect_oasst,'mediawiki':collect_mediawiki,'poetry':collect_poetry}
     for source in config['sources']:
         if not source['enabled']: continue

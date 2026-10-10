@@ -1,10 +1,14 @@
 import { CardMatcher } from './card-matcher';
+import { EntrySelector } from './alternatives';
 
-export type ReflectionGame = 'tarot' | 'iching' | 'needs';
+export type ReflectionGame = 'tarot' | 'iching' | 'needs' | 'image' | 'scenario' | 'keyword';
 export function requestedGame(text: string): ReflectionGame | undefined {
   if (/不想|不要|不抽|不用|停止|跳过/.test(text)) return;
   if (/周易|易经|八卦|六爻|掷.*(币|钱)/.test(text)) return 'iching';
   if (/情绪.*(卡|游戏)|需要卡|需求卡/.test(text)) return 'needs';
+  if (/意象联想|图片联想|imagery exercise/i.test(text)) return 'image';
+  if (/场景联想|情境练习|scenario exercise/i.test(text)) return 'scenario';
+  if (/关键词联想|keyword exercise/i.test(text)) return 'keyword';
   if (/塔罗|抽.*牌/.test(text)) return 'tarot';
 }
 
@@ -30,6 +34,12 @@ export function castCoins(random = Math.random) {
 }
 
 export function reflectionGame(game: ReflectionGame, context: { userId: string; sessionId: string; emotion: string; intensity: number }, random = Math.random): string {
+  if (['image','scenario','keyword'].includes(game)) {
+    const entry = new EntrySelector().getEntry(game as 'image'|'scenario'|'keyword')!;
+    const start = Math.floor(random() * entry.items.length);
+    const items = Array.from({length:3},(_,i) => entry.items[(start+i)%entry.items.length]);
+    return `${game === 'image' ? '意象联想（文字画面）' : entry.title}\n\n${items.map((item,i) => `${'ABC'[i]}. ${item.text}`).join('\n')}\n\n可以选 A/B/C 或说“都不像”“跳过”。这些是联想素材，不代表你的经历或心理结论。`;
+  }
   if (game === 'tarot') {
     const card = new CardMatcher().selectCards({ userId: context.userId, sessionId: context.sessionId, trigger: 'user_request', currentEmotion: context.emotion, emotionIntensity: context.intensity }).cards[0];
     const reversed = random() < .5;
