@@ -19,6 +19,7 @@ import { focusedTask } from '../memory/follow-up';
 import { updateExperiments } from '../memory/experiments';
 import { applyJourneyPolicy } from './journey-policy';
 import { sessionHealth } from './session-health';
+import { advanceAffect, affectView, affectPrompt } from '../affect/engine';
 import {
   SessionState, StateDecision, EmotionState, SafetyResult,
   OrchestratorInput, OrchestratorOutput, OrchestratorConfig, DEFAULT_ORCHESTRATOR_CONFIG,
@@ -91,7 +92,7 @@ export class ConversationOrchestrator {
       timed('safetyMs', classifier.classify(userInput, sessionId, context, signal)),
       timed('retrievalMs', quickCrisis || deterministic ? Promise.resolve(undefined) : this.knowledge.analyze(userInput, signal, retrieval)),
       timed('extractionMs', !quickCrisis && !deterministic && memory.settings.capture
-        ? inferTurnAnalysis(this.extractor, userInput, signal, memory.settings.recall ? memory.entries : [],{history:historyFor(memory)}) : Promise.resolve({candidates:[],experiments:[],intent:undefined})),
+        ? inferTurnAnalysis(this.extractor, userInput, signal, memory.settings.recall ? memory.entries : [],{history:historyFor(memory),affect:memory.affect?.enabled!==false}) : Promise.resolve({candidates:[],experiments:[],intent:undefined,affect:[]})),
     ]);
     timings.preparationMs = Date.now()-started;
     const localEmotion = knowledge && knowledge.confidence >= .55 ? localEmotions[knowledge.emotion] : undefined;
@@ -123,10 +124,12 @@ export class ConversationOrchestrator {
     let decision = this.stateMachine.evaluateTransition(state, emotion, userInput, safety);
     let response: string;
     let memoryUsed = 0;
+    let affectUpdates = 0;
     let quality: { score: number; warnings: string[] } | undefined;
     let rag: EmotionRagContext | undefined;
     let jointRetrieval: OrchestratorOutput['metadata']['retrieval'];
     let continuity: ReturnType<typeof continuityView> | undefined;
+    let assistantAffect=affectView(memory);
     if (safety.shouldBlock) {
       decision = { nextState: 'SAFETY_PROTOCOL', empathyLevel: 'L1', shouldProgress: false,
         constraints: { empathyOnly: true, noProgression: true }, reason: '优先确认即时安全', transitionScore: 1 };
@@ -135,12 +138,16 @@ export class ConversationOrchestrator {
       if (memoryCommand(userInput) === 'forget') {
         const cleared = prepareMemory(memory, userInput, { sessionId, turnId: String(state.turnCount + 1), now: Date.now() });
         memory = cleared.profile;
+        assistantAffect=affectView(memory);
         response = cleared.reply + '\n\n' + response;
       }
     } else {
       const prepared = game || gameReply ? { profile:memory,reply:undefined } : prepareMemory(memory, userInput, origin, analysis.candidates, state.focusMemoryId);
       memory = prepared.profile;
       updateExperiments(memory,analysis.experiments,userInput,origin);
+      const beforeAffectRevision=memory.revision;
+      assistantAffect=deterministic?affectView(memory):advanceAffect(memory,userInput,analysis.affect,origin.now);
+      affectUpdates=memory.revision-beforeAffectRevision;
       if (state.reflection?.selected !== undefined && /这让我|这张|选项|联想到|it reminds|this makes/i.test(userInput)) {
         for (const record of memory.entries) if (record.evidence.some(e=>e.sessionId===origin.sessionId && e.turnId===origin.turnId)) {
           record.reflection={game:state.reflection.game,choice:state.reflection.selected};
@@ -206,6 +213,7 @@ export class ConversationOrchestrator {
           emotionRagPrompt(rag),
           continuityPrompt(continuity, userInput,recalled),
           communication.instruction,
+          affectPrompt(assistantAffect),
           this.empathyEngine.guidance(decision.empathyLevel,recognized.primaryEmotion.id),
           `意图提示：${route.strategyHints.join('；')}。`,
           reflectionPrompt(validReflection(state.reflection,memory.contextEpoch)),
@@ -243,9 +251,9 @@ export class ConversationOrchestrator {
     // Bound the compatibility adapter cache; the local server uses its own persistent store.
     if (this.sessionStates.size > 200) this.sessionStates.delete(this.sessionStates.keys().next().value!);
     return { response, updatedState: state, updatedMemory: memory, metadata: { state: decision.nextState, subState: decision.nextSubState,
-      empathyLevel: decision.empathyLevel, emotion, safetyResult: safety, memoryUsed, memoryUpdated: memory.revision - originalMemory.revision,
+      empathyLevel: decision.empathyLevel, emotion, safetyResult: safety, memoryUsed, memoryUpdated: memory.revision - originalMemory.revision - affectUpdates,
       processingTimeMs: Date.now() - started, mode: this.gateway.mode, quality, rag, timings, retrieval:jointRetrieval,
-      continuity, health:sessionHealth(state,this.config), intentSource:analysis.intent?'merged-context':'local-rules', reflection: safety.shouldBlock ? undefined : state.reflection,
+      continuity, assistantAffect, health:sessionHealth(state,this.config), intentSource:analysis.intent?'merged-context':'local-rules', reflection: safety.shouldBlock ? undefined : state.reflection,
       sources: (rag?.evidence || []).map(({ source, source_url, license, score }) => ({ source, source_url, license, score })),
       analysisSource: localEmotion ? 'local-trained-head' : 'local-lexicon', backend: this.gateway.mode === 'live' ? 'cloud' : 'demo' } };
   }

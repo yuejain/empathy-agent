@@ -47,6 +47,7 @@ export function addCandidate(p: MemoryProfile, c: Candidate, origin: MemoryOrigi
   p.entries.push(entry); audit(p, pending ? 'propose' : c.resolve ? 'resolve' : 'write', entry.id, now); return entry;
 }
 export function clearMemories(p: MemoryProfile, now: number) {
+  if(p.affect)delete p.affect.state;
   p.entries = []; p.audit = []; p.contextEpoch++; audit(p, 'clear', '', now);
 }
 export function memoryCommand(input: string): 'remember' | 'forget' | 'list' | undefined {
@@ -111,15 +112,17 @@ export function prepareMemory(profile: MemoryProfile, input: string, origin: Mem
       try {changeExperiment(copy,{operation:'save',fields:explicit.fields},origin,'user');p.entries[p.entries.indexOf(experimentTarget)]=copy;p.contextEpoch++;audit(p,'experiment',copy.id,origin.now);}catch{}
     }
   }
+  if(p.contextEpoch!==profile.contextEpoch && /更正|纠正|之前说错|correct memory|I was wrong|I misspoke/i.test(input) && p.affect)delete p.affect.state;
   return { profile: p, reply };
 }
 
 const mutationSchema = z.object({
-  revision: z.number().int().nonnegative(), action: z.enum(['add', 'edit', 'confirm', 'resolve', 'progress', 'experiment', 'delete', 'clear', 'settings']),
+  revision: z.number().int().nonnegative(), action: z.enum(['add', 'edit', 'confirm', 'resolve', 'progress', 'experiment', 'delete', 'clear', 'settings','affect']),
   id: z.string().uuid().optional(), text: z.string().min(1).max(500).optional(), kind: kindSchema.optional(),
   capture: z.boolean().optional(), recall: z.boolean().optional(),
   progress: z.enum(['planned','in_progress','blocked','completed','cancelled']).optional(), dueAt: z.number().finite().nonnegative().nullable().optional(),
   experiment: experimentOperationSchema.optional(),
+  affect: z.object({enabled:z.boolean().optional(),reset:z.literal(true).optional()}).strict().optional(),
 }).strict();
 export function mutateMemory(profile: MemoryProfile, body: unknown, origin: MemoryOrigin): MemoryProfile {
   const parsed = mutationSchema.safeParse(body); if (!parsed.success) throw new MemoryError('记忆操作格式无效。');
@@ -127,9 +130,15 @@ export function mutateMemory(profile: MemoryProfile, body: unknown, origin: Memo
   if (op.revision !== profile.revision) throw new MemoryError('记忆已更新，请刷新后重试。', 409);
   const p = structuredClone(profile), now = origin.now;
   if (op.action === 'clear') clearMemories(p, now);
+  else if(op.action==='affect') {
+    if(!op.affect || op.affect.enabled===undefined && !op.affect.reset)throw new MemoryError('缺少情感模块操作。');
+    p.affect={enabled:op.affect.enabled ?? p.affect?.enabled ?? true};
+    p.contextEpoch++;audit(p,'affect-reset','',now);
+  }
   else if (op.action === 'settings') {
     if (op.capture === undefined && op.recall === undefined) throw new MemoryError('缺少设置值。');
     if (op.capture !== undefined) p.settings.capture = op.capture;
+    if(op.capture===false && p.affect)delete p.affect.state;
     if (op.recall !== undefined && op.recall !== p.settings.recall) { p.settings.recall = op.recall; p.contextEpoch++; }
     audit(p, 'settings', '', now);
   } else if (op.action === 'add') {
@@ -158,7 +167,7 @@ export function mutateMemory(profile: MemoryProfile, body: unknown, origin: Memo
       if (!text) throw new MemoryError('请填写更正内容。');
       const reason = rejection(text); if (reason) throw new MemoryError(reason);
       if (ambiguous(text) || historical(text) || question(text)) throw new MemoryError('请先更正为当前的自身情况，避免把过去或他人的情况当作现在。');
-      if(op.action==='confirm' && item.experiment){item.expiresAt=now+TTL[item.kind];item.updatedAt=now;item.source='confirmed';p.contextEpoch++;audit(p,'confirm',item.id,now);return p;}
+      if(op.action==='confirm' && item.experiment){item.expiresAt=now+TTL[item.kind];item.updatedAt=now;item.source='confirmed';p.contextEpoch++;audit(p,'confirm',item.id,now);if(p.affect)delete p.affect.state;return p;}
       // Redact the replaced payload, including its old evidence, rather than retaining dirty text in an audit log.
       p.entries = p.entries.filter(e => e.id !== item.id); p.contextEpoch++;
       const c = classifyStatement(text, op.kind || item.kind);
@@ -166,5 +175,6 @@ export function mutateMemory(profile: MemoryProfile, body: unknown, origin: Memo
       audit(p, op.action, item.id, now);
     }
   }
+  if(p.contextEpoch!==profile.contextEpoch && p.affect)delete p.affect.state;
   return p;
 }

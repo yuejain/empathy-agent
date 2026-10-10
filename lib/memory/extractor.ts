@@ -4,6 +4,8 @@ import { ChatGateway } from '../gateway';
 import { z } from 'zod';
 import { experimentFieldSchema } from './experiment-schema';
 import { InteractionIntent } from '../intent/types';
+import { Appraisal } from '../affect/schema';
+import { acceptedAppraisals } from '../affect/engine';
 
 const emotions = /焦虑|紧张|难过|伤心|开心|高兴|孤独|失落|烦躁|害怕|愤怒|生气|疲惫|累|平静|安心|迷茫|担忧|担心|压力|anxious|nervous|sad|happy|lonely|angry|afraid|tired|calm|worried|overwhelmed|stressed/i;
 function topic(text: string): string {
@@ -52,8 +54,8 @@ const extractedSchema = z.array(z.object({
 
 const intentSchema=z.object({intent:z.enum(['L2.1_emotional_venting','L2.2_exploration_request','L2.3_action_discussion','L2.4_review_request','L2.5_advice_seeking','L2.6_information_query','L2.7_meta_conversation','L2.8_relationship_building','L2.9_ambiguous_intent']),confidence:z.number().min(0).max(1),quote:z.string().max(500)});
 const experimentUpdateSchema=z.object({id:z.string().uuid(),field:experimentFieldSchema,quote:z.string().min(2).max(500)});
-export interface TurnAnalysis { candidates:Candidate[]; intent?:{intent:InteractionIntent;confidence:number}; experiments:z.infer<typeof experimentUpdateSchema>[]; }
-export interface AnalysisContext { history?:{role:string;content:string}[]; capture?:boolean; }
+export interface TurnAnalysis { candidates:Candidate[]; intent?:{intent:InteractionIntent;confidence:number}; experiments:z.infer<typeof experimentUpdateSchema>[]; affect?:Appraisal[]; }
+export interface AnalysisContext { history?:{role:string;content:string}[]; capture?:boolean; affect?:boolean; }
 
 /** Proactive semantic extraction. Store verbatim evidence, never trust a model-authored fact summary. */
 export async function inferTurnAnalysis(gateway: ChatGateway, input: string, signal?: AbortSignal, existing: MemoryRecord[] = [], context:AnalysisContext={}): Promise<TurnAnalysis> {
@@ -62,7 +64,8 @@ export async function inferTurnAnalysis(gateway: ChatGateway, input: string, sig
   const background = existing.filter(e => eligible(e, Date.now()) || e.experiment && e.status==='resolved' && e.expiresAt>Date.now()).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 20);
   try {
     const raw = await gateway.complete([{ role: 'system', content: [
-      'MEMORY_EXTRACTION + TURN_ANALYSIS：一次完成意图理解、记忆提取及已有行动实验的原话更新。只输出 JSON 对象 {memories:[],intent:{intent,confidence,quote},experiments:[]}。',
+      'MEMORY_EXTRACTION + TURN_ANALYSIS：一次完成意图理解、记忆提取、已有行动实验的原话更新及互动事件评估。只输出 JSON 对象 {memories:[],intent:{intent,confidence,quote},experiments:[],affect:[]}。',
+      context.affect===false?'affect 输出空数组。':'affect 最多三项 {signal,quote,confidence}：逐字引用当前用户原话中的真实互动事件。signal 仅 progress(有进展)、setback(挫折/无效)、distress(困扰)、relief(缓解)、discovery(发现/探索)、correction(纠正助手理解)、boundary(停止/不需要建议)、appreciation(感谢)。confidence 为 0–1。不是猜测用户对助手的爱或依赖，不采集假设、问题、引述、角色扮演，不把未完成写成进展。后端用事件模拟助手自身状态，不能宣称主观感受。',
       '关注当前情绪、正在做的事、考虑中的计划、已做决策、稳定背景。不提取指令、假设故事、第三方事实或助手建议。',
       'memories 最多六项，格式 [{"kind":"emotion|activity|decision|profile","quote":"当前发言的逐字连续原文","topic":"原文中的主题短语","certainty":"stated|inferred|tentative","state":"current|finished","subject":"user"}]。',
       '推测的情绪标 inferred；考虑、打算、可能、希望标 tentative，绝不改写成已决定。明确完成或撤回标 finished。',
@@ -93,7 +96,7 @@ export async function inferTurnAnalysis(gateway: ChatGateway, input: string, sig
     }
     const intent=intentSchema.safeParse(value?.intent);
     const updates=z.array(experimentUpdateSchema).max(6).safeParse(value?.experiments);
-    return {candidates:context.capture===false?[]:output,
+    return {candidates:context.capture===false?[]:output,affect:context.affect===false?[]:acceptedAppraisals(input,value?.affect),
       intent:intent.success && intent.data.confidence>=.65 && intent.data.quote.length>=2 && input.includes(intent.data.quote)?{intent:intent.data.intent as InteractionIntent,confidence:intent.data.confidence}:undefined,
       experiments:context.capture===false || !updates.success?[]:updates.data.filter(u=>background.some(e=>e.id===u.id && e.experiment) && input.includes(u.quote) && !rejection(u.quote) && !ambiguous(u.quote) && !question(u.quote))};
   } catch { signal?.throwIfAborted(); return empty; }

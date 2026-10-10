@@ -1,6 +1,7 @@
 import { labels, MemoryProfile, MemoryRecord } from './schema';
 import { eligible } from './policy';
 import { continuityView } from '../context/continuity';
+import { affectView } from '../affect/engine';
 
 function terms(text: string): Set<string> {
   const parts = text.toLowerCase().match(/[a-z]{2,}|[\u3400-\u9fff]{2,}/g) || [];
@@ -36,7 +37,7 @@ export function memoryPrompt(entries: MemoryRecord[], now = Date.now()): string 
   ].join('\n');
 }
 export function memoryView(p: MemoryProfile, now = Date.now()) {
-  return { revision: p.revision, settings: p.settings, continuity:continuityView(p,now),
+  return { revision: p.revision, settings: p.settings, continuity:continuityView(p,now),affect:affectView(p,now),
     entries: p.entries.map(e => ({ ...e, status: e.status === 'active' && !eligible(e, now) ? 'expired' : e.status, label: labels[e.kind] })).sort((a, b) => b.updatedAt - a.updatedAt),
     activeCount: p.entries.filter(e => eligible(e, now)).length,
     pendingCount: p.entries.filter(e => e.status === 'pending').length,

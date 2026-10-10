@@ -33,6 +33,7 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
     ['/corpus.js', { content: readFileSync(resolve(ROOT, 'dist/public/corpus.js')), type: 'text/javascript; charset=utf-8' }],
     ['/experiments.js', { content: readFileSync(resolve(ROOT, 'dist/public/experiments.js')), type: 'text/javascript; charset=utf-8' }],
     ['/session-health.js', { content: readFileSync(resolve(ROOT, 'dist/public/session-health.js')), type: 'text/javascript; charset=utf-8' }],
+    ['/affect.js', { content: readFileSync(resolve(ROOT, 'dist/public/affect.js')), type: 'text/javascript; charset=utf-8' }],
     ['/styles.css', { content: readFileSync(resolve(ROOT, 'dist/public/styles.css')), type: 'text/css; charset=utf-8' }],
   ]);
   const server = createServer(async (req, res) => {
