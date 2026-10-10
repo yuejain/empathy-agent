@@ -290,6 +290,7 @@ export interface OrchestratorOutput {
     timings?: Record<string,number>;
     health?: {status:string;message?:string};
     intentSource?: 'merged-context'|'local-rules';
+    assistantAffect?: import('../affect/engine').AffectView;
     retrieval?: { mode:'semantic-hybrid' | 'lexical-fallback'; expanded:boolean; candidates:number; recalled:number };
     continuity?: ReturnType<typeof import('../context/continuity').continuityView>;
     reflection?: import('../tarot/reflection-session').ReflectionSession;

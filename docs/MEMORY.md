@@ -61,6 +61,9 @@ v1 首次载入会校验所有记录，创建一次 `.v1.bak` 原始备份，把
 | action: `experiment` | id + experiment: `{operation, fields?}`；operation 为 save/start/complete/review/iterate/cancel/remove；字段与证据规则见 [高级功能](ADVANCED_WORKFLOW.md) |
 | action: `clear` | 清空所有条目；保留设置，递增上下文版本 |
 | action: `settings` | capture 和/或 recall 布尔值；两开关独立 |
+| action: `affect` | affect: `{enabled: boolean}` 或 `{reset: true}`；关闭或重置助手情感，不允许写入数值 |
+
+档案新增可选 `affect` 字段，保存助手自身的计算性情感，旧 v2 档案仍可读取。与用户情绪事实分开；更新共用原子事务和版本检查，不计入新增个人记忆数量。更正、删除和隐私开关会清除派生状态，详见 [情感模块](ASSISTANT_AFFECT.md)。
 
 `GET /api/memories` 还返回 `continuity`：跟进事项、实验当前轮、情绪记录、旅程与联想历史。实验属于对应条目的可选字段，不改变 v2 档案版本，旧文件可直接读取；实验全生命周期与原档案一起原子提交。更正事项正文会清除其旧实验；修改实验字段会失效旧上下文及不再有依据的复盘状态。
 

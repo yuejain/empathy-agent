@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { experimentSchema } from './experiment-schema';
+import { affectSchema } from '../affect/schema';
 
 export const kindSchema = z.enum(['emotion', 'activity', 'decision', 'profile']);
 export type MemoryKind = z.infer<typeof kindSchema>;
@@ -20,6 +21,7 @@ export type MemoryRecord = z.infer<typeof entrySchema>;
 export const profileSchema = z.object({
   owner: z.string().min(1).max(100), revision: z.number().int().nonnegative(), contextEpoch: z.number().int().nonnegative(),
   settings: z.object({ capture: z.boolean(), recall: z.boolean() }).strict(),
+  affect: affectSchema.optional(),
   entries: z.array(entrySchema).max(300),
   audit: z.array(z.object({ action: z.string().max(32), id: z.string().max(100), at: time }).strict()).max(100),
 }).strict();

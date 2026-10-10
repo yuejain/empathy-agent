@@ -1,21 +1,23 @@
 # 留白 · Empathy Agent
 
-[![Validate local app](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml/badge.svg?branch=codex%2Flong-term-memory)](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml)
+[![Validate local app](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml/badge.svg?branch=codex%2Fassistant-affect)](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml)
 
 一个可以在本机运行的情感陪伴应用，界面为中文，对话支持中英文。提供真实流式输出、主动跨会话记忆、情绪增强检索，以及塔罗、周易和情绪需要卡联想练习。**本地小模型负责情绪分析与 RAG，云端大模型负责最终回复**，支持 OpenAI 兼容 API。
 
-基础可用版本已通过 [PR #1](https://github.com/yuejain/empathy-agent/pull/1) 合并；本次长期记忆重构位于 **`codex/long-term-memory`**。首次克隆后，无模型配置时使用明确标注的规则演示；本地模型需要另行下载和训练。
+基础版本与长期记忆、行动实验闭环已通过 [PR #1](https://github.com/yuejain/empathy-agent/pull/1)、[PR #2](https://github.com/yuejain/empathy-agent/pull/2) 合并；本次助手情感模块位于 **`codex/assistant-affect`**。首次克隆后，无模型配置时使用明确标注的规则演示；本地模型需要另行下载和训练。
 
 [快速运行](#快速运行) · [云端模型](#接入真实模型) · [长期记忆](#长期记忆) · [本地模型与语料](#本地模型与语料) · [训练结果](docs/TRAINING_RESULTS.md) · [实现与验收](docs/REVIEW.md)
 
 本地多语言编码器、已训练情绪分类头和真实向量库用于检索增强。旧 Qwen3 LoRA 生成入口已停用，已有权重保留在本机，不再加载到网页回复链路。中文人工情绪标签仍不足，输出会标注不确定性，不能把分类分数当作诊断或情绪强度。
+
+新增“**陪伴情感 · 模拟**”：助手依据互动事件形成自身的关切、欣慰、好奇等倾向，区分当下反应与缓慢变化的心境，跨会话延续并调节云端回复。可查看、关闭、重置，遵循记忆删除与隐私开关；事件评估并入现有调用。这是计算性情感模拟，未证明主观感受，详见 [情感模块设计与边界](docs/ASSISTANT_AFFECT.md)。
 
 ## 快速运行
 
 网页服务要求 Git 和 **Node.js 22.9+**。基础云端聊天或规则演示无需 Python、GPU 或数据库。本地情绪 RAG 需要 Python，在线分析运行在 CPU；Windows 配套安装脚本默认安装 CPU 版 PyTorch，分类训练也可选择 CUDA 加速。
 
 ```bash
-git clone --branch codex/long-term-memory https://github.com/yuejain/empathy-agent.git
+git clone --branch codex/assistant-affect https://github.com/yuejain/empathy-agent.git
 cd empathy-agent
 npm ci
 ```

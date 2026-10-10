@@ -21,6 +21,7 @@ function setBusy(busy) {
   $('playGame').disabled = $('game').disabled = !ready || busy;
   $('openMemory').disabled = !ready || busy;
   $('openExperiments').disabled = !ready || busy;
+  $('openAffect').disabled = !ready || busy;
   $('sessionHealth').querySelectorAll('button').forEach(button=>{button.disabled=!ready||busy;});
   $('reflectionChoices').querySelectorAll('button').forEach(b=>{b.disabled=!ready || busy;});
   document.querySelectorAll('[data-prompt]').forEach(b => b.disabled = !ready || busy);
@@ -104,6 +105,7 @@ async function sendMessage() {
         const row = partialRow || $('messages').lastElementChild;
         renderReflection(data.reflection);
         renderSessionHealth(data.health);
+        renderAffect(data.assistantAffect);
         if (data.rag?.direction) {
           const note = document.createElement('details'); note.className = 'source-note emotion-note';
           const title = document.createElement('summary'); title.textContent = `本轮情绪参考 · ${data.rag.direction.label}`; note.appendChild(title);
@@ -212,6 +214,7 @@ function renderMemory() {
   $('memoryCount').textContent = memoryData.activeCount;
   $('memorySummary').textContent = `${memoryData.activeCount} 条有效 · ${memoryData.pendingCount} 条待核对`;
   renderContinuity(memoryData.continuity);
+  renderAffect(memoryData.affect);affectRevision=memoryData.revision;
   $('memoryList').replaceChildren();
   const filter = $('memoryFilter').value;
   const items = memoryData.entries.filter(e => filter === 'all' || filter === 'history' && !['active', 'pending'].includes(e.status) || e.status === filter);
