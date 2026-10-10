@@ -18,7 +18,10 @@ class Engine:
         torch.set_num_threads(6)
         self.encoder = SentenceTransformer(str(ROOT/'models/local/encoder'), device='cpu', local_files_only=True)
         # Only load locally trained artifacts, never uploaded pickle files.
-        self.head = joblib.load(ROOT/'models/local/emotion-head.joblib')
+        from model_registry import pointer,verified_model
+        self.model_version=pointer()['version']
+        self.head = joblib.load(verified_model(self.model_version))
+        self.model_lock=threading.Lock()
         self.encoder_lock = threading.Lock()
         self.index_lock = threading.Lock()
         self.index_version = None
@@ -48,6 +51,9 @@ class Engine:
         if hasattr(self, 'index_version'):
             try: self.reload_index()
             except (ValueError, OSError, KeyError): pass  # Keep the last verified snapshot during a failed update.
+        if hasattr(self,'model_version'):
+            try:self.reload_model()
+            except (ValueError,OSError,KeyError):pass
         # Private texts are encoded in this request only, never cached, saved or mixed into the public index.
         texts = [text] + ([query] if query != text else []) + [m['text'] for m in memories]
         with self.encoder_lock:
@@ -55,8 +61,9 @@ class Engine:
         vector = vectors[:1]; query_vector = vectors[1] if query != text else vectors[0]
         offset = 2 if query != text else 1
         encoded = time.perf_counter()
-        probabilities = [float(h.predict_proba(vector)[0,1]) for h in self.head['heads']]
-        distribution = sorted(zip(self.head['labels'], probabilities), key=lambda x:-x[1])
+        head=self.head
+        probabilities = [float(h.predict_proba(vector)[0,1]) for h in head['heads']]
+        distribution = sorted(zip(head['labels'], probabilities), key=lambda x:-x[1])
         detected = [label for label,score in distribution if score>=.5] or [distribution[0][0]]
         if hasattr(self, 'index_lock'):
             with self.index_lock: docs, public_vectors, tokens = self.docs, self.vectors, self.tokens
@@ -81,6 +88,17 @@ class Engine:
             'label_source':'local-trained-head', 'hits':hits, 'index_size':len(docs), 'memory_hits':memory_hits,
             'timings':{'encodeMs':round((encoded-started)*1000,2),'searchMs':round((time.perf_counter()-encoded)*1000,2)}}
 
+    def reload_model(self):
+        import joblib
+        from model_registry import pointer,verified_model
+        from corpus import LABELS
+        version=pointer()['version']
+        if version==self.model_version:return
+        candidate=joblib.load(verified_model(version))
+        dimension=self.encoder.get_sentence_embedding_dimension()
+        if candidate.get('labels')!=LABELS or len(candidate.get('heads',[]))!=len(LABELS) or any(h.n_features_in_!=dimension for h in candidate['heads']):raise ValueError('Incompatible classifier')
+        with self.model_lock:self.head,self.model_version=candidate,version
+
 engine = None
 maintenance = None
 class Handler(BaseHTTPRequestHandler):
@@ -94,12 +112,16 @@ class Handler(BaseHTTPRequestHandler):
         return bool(re.fullmatch(r'(127\.0\.0\.1|localhost)(:\d+)?',self.headers.get('Host',''))) and not self.headers.get('Origin')
     def do_GET(self):
         if not self.allowed(): return self.json(403, {'error':'Loopback API only'})
-        if self.path=='/maintenance': return self.json(200,maintenance.snapshot()) if maintenance else self.json(503,{'error':'Maintenance unavailable'})
+        if self.path=='/maintenance':
+            from model_registry import status
+            return self.json(200,maintenance.snapshot() | {'model':status()}) if maintenance else self.json(503,{'error':'Maintenance unavailable'})
         if self.path=='/health': return self.json(200, {'ok':True, 'role':'emotion-rag', 'classifier':True,
-            'index_documents':len(engine.docs), 'api_version':2, 'index_version':getattr(engine,'index_version','legacy'), 'generator':False, 'generator_loaded':False})
+            'index_documents':len(engine.docs), 'api_version':3, 'model_version':getattr(engine,'model_version','legacy'), 'index_version':getattr(engine,'index_version','legacy'), 'generator':False, 'generator_loaded':False})
         self.json(404, {'error':'Not found'})
     def do_POST(self):
-        if not self.allowed(): return self.json(403, {'error':'Loopback API only'})
+        if not self.allowed():
+            self.close_connection=True
+            return self.json(403, {'error':'Loopback API only'})
         try:
             size = int(self.headers.get('Content-Length','0'))
             if not 0<size<=160000:

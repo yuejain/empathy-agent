@@ -5,6 +5,7 @@ import { memoryEmotionTrend } from '../emotion-tracker';
 import { JourneyStageTracker } from '../orchestrator/journey-tracker';
 import { NarrativeDetector } from '../tarot/narrative';
 import { TarotInteractionManager } from '../tarot/interaction';
+import { currentCycle, experimentSummary, experimentPrompt } from '../memory/experiments';
 
 export function continuityView(profile: MemoryProfile, now = Date.now()) {
   const entries = profile.settings.recall ? profile.entries : [];
@@ -12,21 +13,25 @@ export function continuityView(profile: MemoryProfile, now = Date.now()) {
   const active = tasks.filter(t => !['completed','cancelled'].includes(t.progress));
   const tracker = new JourneyStageTracker();
   const stage = tracker.evaluate({
-    core_memory: { themes: entries.filter(e => eligible(e,now) && e.kind === 'activity').map(e => e.id) },
+    core_memory: { themes: entries.filter(e => eligible(e,now) && e.kind === 'activity').map(e => e.id),
+      values:entries.filter(e=>eligible(e,now) && currentCycle(e)?.values).map(e=>currentCycle(e)!.values!.text),
+      constraints:entries.filter(e=>eligible(e,now) && currentCycle(e)?.constraints).map(e=>currentCycle(e)!.constraints!.text) },
     action_experiments: tasks.map(t => ({status:t.progress,name:t.text})),
-    direction_cards: entries.filter(e => eligible(e,now) && e.key==='profile:direction' && e.certainty==='stated').map(e => ({status:'validated',id:e.id})),
+    direction_cards: entries.filter(e => (eligible(e,now) && e.key==='profile:direction' && e.certainty==='stated') || e.expiresAt>now && ['active','resolved'].includes(e.status) && currentCycle(e)?.status==='reviewed' && currentCycle(e)?.direction).map(e => ({status:'validated',id:e.id})),
   }, new Set(entries.flatMap(e => e.evidence.map(x => x.sessionId))).size);
   const effectiveStage = stage === 'journey_stage_1' && active.length ? 'journey_stage_2' : stage;
-  return { tasks, trend: memoryEmotionTrend(profile, now), reflectionHistory:new NarrativeDetector().summarize(profile),
+  return { tasks, experiments:entries.filter(e=>e.expiresAt>now && ['active','resolved'].includes(e.status)).sort((a,b)=>b.updatedAt-a.updatedAt).map(experimentSummary).filter((e):e is NonNullable<typeof e>=>!!e).slice(0,12), trend: memoryEmotionTrend(profile, now), reflectionHistory:new NarrativeDetector().summarize(profile),
     preferredEntry:new TarotInteractionManager().preferredEntry(profile), journey: { stage:effectiveStage, ...tracker.getGuidance(effectiveStage) } };
 }
 export function continuityOpening(profile:MemoryProfile) {
-  const view=continuityView(profile),task=view.tasks.find(t=>!['completed','cancelled'].includes(t.progress));
+  const view=continuityView(profile),review=view.experiments.find(e=>e?.status==='awaiting_review');
+  if(review)return `你之前尝试了“${review.title.slice(0,70)}”。想聊聊实际结果和感受，还是从别的事情开始？`;
+  const task=view.tasks.find(t=>!['completed','cancelled'].includes(t.progress));
   if (task) return `你之前提到“${task.text.slice(0,70)}”。今天想继续聊这件事，还是从别的事情开始？`;
   return new JourneyStageTracker().generateOpeningStrategy(view.journey.stage,{});
 }
 export function continuityPrompt(view: ReturnType<typeof continuityView>, input: string, recalled:MemoryRecord[] = []) {
-  const review = /上次|之前|进展|进度|复盘|回顾|最近怎么样|last time|progress|review|how.*going/i.test(input);
+  const review = /上次|之前|进展|进度|复盘|回顾|结果|效果|最近怎么样|last time|progress|review|result|outcome|how.*going/i.test(input);
   const ids=new Set(recalled.map(e=>e.id));
   const tasks = view.tasks.filter(t => review || ids.has(t.id) && !['completed','cancelled'].includes(t.progress))
     .sort((a,b) => Number(ids.has(b.id))-Number(ids.has(a.id))).slice(0,3)
@@ -35,5 +40,6 @@ export function continuityPrompt(view: ReturnType<typeof continuityView>, input:
     '计划不等于决定、开始不等于完成。completed/cancelled 不再催促执行；blocked 先询问阻碍。当前用户意愿优先，不主动列出无关经历。',
     '只有用户询问进展、同一事项继续或自然的新会话开场时，才选择一件相关事项温和跟进；不重复催问。历史趋势不能描述成用户当前状态。',
     JSON.stringify({ tasks, journey:view.journey, trend:{ ...view.trend, points:view.trend.points.slice(-8).map(({session,...p}) => p) } }),
+    experimentPrompt(view.experiments.filter(e=>review || ids.has(e.id))),
   ].join('\n');
 }

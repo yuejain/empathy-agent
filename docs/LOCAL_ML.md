@@ -61,9 +61,11 @@ powershell -ExecutionPolicy Bypass -File .\Stop-LocalML.ps1
 
 `corpus.py --only 源ID` 更新所选来源，合并已保存的其他来源快照；全部采集失败时保留已有语料。`--refresh` 重新抓取可变来源，固定提交快照继续复用缓存；旧缓存只在新下载完整后替换。固定快照缓存与 `.part` 文件支持中断后重试。请勿把重新下载当前版本与完全复现已固定快照混为一谈：后续上游更新会改变数据，需保留本次 manifests 和 hashes。
 
-网页“语料库”通过 `/api/corpus` 连接本地服务 `/maintenance`。只允许 `update` / `rebuild` 固定操作和 `scheduleHours: 0 / 24 / 168`，不接受任意 URL、路径或命令。更新任务串行，状态及公开语料日志保存在 `data/reports/`；自动更新默认关闭，仅服务运行期间有效。不可变索引位于 `data/index/versions/<版本>/`，`current.json` 原子发布；服务检索前检查版本，核对哈希与维度后切换。失败不会覆盖服务已加载的索引。旧版本保留供人工排查，暂未自动清理。
+网页“语料库”通过 `/api/corpus` 连接本地服务 `/maintenance`。只允许 `update` / `rebuild` / `retrain` / `rollback` 固定操作和 `scheduleHours: 0 / 24 / 168`，不接受任意 URL、路径或命令。更新任务串行，状态及公开语料日志保存在 `data/reports/`；自动更新默认关闭，仅服务运行期间有效。不可变索引位于 `data/index/versions/<版本>/`，`current.json` 原子发布；服务检索前检查版本，核对哈希与维度后切换。失败不会覆盖服务已加载的索引。旧版本保留供人工排查，暂未自动清理。
 
-`POST /analyze` 新增可选 `query` 和 `memories: [{id,text}]`。最多 80 条、每条 500 字符；一次批量编码分别完成当前消息分类、公共语料检索和私人记忆排序。私人文本与向量不落盘、不跨请求缓存，不加入公共向量矩阵。返回 `memory_hits` 与阶段计时。新版 health 标明 `api_version: 2`；升级后请停止并重启本地服务。
+`retrain` 使用现有编码器和公开训练集建立候选分类头，验证分区达固定门槛后发布到 `models/local/classifiers/active.json`，下一次分析热加载；`rollback` 回退上一头版本。模型目录、报告和哈希均留在本机。完整门槛及中文标签覆盖限制见 [ADVANCED_WORKFLOW.md](ADVANCED_WORKFLOW.md)。
+
+`POST /analyze` 新增可选 `query` 和 `memories: [{id,text}]`。最多 80 条、每条 500 字符；一次批量编码分别完成当前消息分类、公共语料检索和私人记忆排序。私人文本与向量不落盘、不跨请求缓存，不加入公共向量矩阵。返回 `memory_hits` 与阶段计时。新版 health 标明 `api_version: 3` 和实际加载的 `model_version`；升级后请停止并重启本地服务。
 
 在 `.env` 设置 `LOCAL_ML_URL=http://127.0.0.1:3001`，然后重启网页服务。分类和检索不需要外网；消息、情绪指向、会话上下文和参考片段会发送到配置的云端服务，由其完成回复。界面分别显示云端回复与本地 RAG 状态，每轮可查看情绪参考和来源。
 

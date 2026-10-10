@@ -9,7 +9,7 @@ import {
   IntentRecognitionResult, RouteDecision, RouteTarget,
   RoutePriority, RouteStrategy, StateMachineHints,
   InteractionIntent, MetaFeedbackRecord, FeedbackPattern,
-  IntentPattern, SubIntent,
+  SubIntent,
 } from './types';
 import { MemoryRecord } from '../memory/schema';
 import { eligible } from '../memory/policy';
@@ -266,13 +266,6 @@ export class MetaFeedbackAccumulator {
 // ==================== 路由决策引擎 ====================
 
 export class IntentRouter {
-  private feedbackAccumulator: MetaFeedbackAccumulator;
-  private intentHistory: IntentPattern | null = null;
-
-  constructor() {
-    this.feedbackAccumulator = new MetaFeedbackAccumulator();
-  }
-
   /**
    * 做出路由决策
    */
@@ -432,49 +425,4 @@ export class IntentRouter {
     return hints;
   }
 
-  /**
-   * 处理元对话反馈
-   */
-  handleMetaFeedback(
-    subIntent: string,
-    details: Record<string, unknown>,
-    currentState: string
-  ): FeedbackPattern {
-    const feedbackType = this.mapSubIntentToFeedbackType(subIntent);
-    return this.feedbackAccumulator.addFeedback(feedbackType, details, currentState);
-  }
-
-  /**
-   * 映射子意图到反馈类型
-   */
-  private mapSubIntentToFeedbackType(subIntent: string): MetaFeedbackRecord['type'] {
-    const map: Record<string, MetaFeedbackRecord['type']> = {
-      'L2.7a_negative_feedback': 'negative',
-      'L2.7b_positive_feedback': 'positive',
-      'L2.7c_style_adjustment': 'style_adjustment',
-      'L2.7d_topic_switch': 'topic_switch',
-    };
-    return map[subIntent] || 'negative';
-  }
-
-  /**
-   * 获取通信风格偏好
-   */
-  getCommunicationStyle(): string {
-    return this.feedbackAccumulator.getCommunicationStyle();
-  }
-
-  /**
-   * 更新意图历史
-   */
-  updateIntentHistory(pattern: IntentPattern): void {
-    this.intentHistory = pattern;
-  }
-
-  /**
-   * 获取意图历史
-   */
-  getIntentHistory(): IntentPattern | null {
-    return this.intentHistory;
-  }
 }

@@ -40,12 +40,14 @@ export class LocalKnowledge {
       return { available: data.ok === true && data.classifier === true, role: 'emotion-rag', indexDocuments: Number(data.index_documents) || 0 };
     } catch { return { available: false, role: 'emotion-rag', indexDocuments: 0 }; }
   }
-  async maintenance(operation?: {action:'rebuild'|'update'} | {scheduleHours:0|24|168}) {
+  async maintenance(operation?: {action:'rebuild'|'update'|'retrain'|'rollback'} | {scheduleHours:0|24|168}) {
     if (!this.url) throw new Error('本地语料服务未连接。');
     const response = await fetch(this.url+'/maintenance',{method:operation ? 'POST' : 'GET',redirect:'error',
       headers:operation ? {'Content-Type':'application/json'} : {},body:operation ? JSON.stringify(operation) : undefined,signal:AbortSignal.timeout(3000)});
     if (!response.ok) throw new Error(response.status === 409 ? '已有语料更新任务在执行。' : '语料管理服务暂不可用。');
-    return z.object({status:z.enum(['idle','running','success','partial','failed','interrupted']),phase:z.enum(['idle','queued','collect','index']),
+    const evaluation=z.record(z.object({examples:z.number().int().nonnegative(),macro_f1:z.number().finite().min(0).max(1)}));
+    return z.object({status:z.enum(['idle','running','success','partial','failed','interrupted']),phase:z.enum(['idle','queued','collect','index','train']),
+      model:z.object({activeVersion:z.string().max(40),canRollback:z.boolean(),candidate:z.object({version:z.string().max(40),passed:z.boolean(),reasons:z.array(z.string().max(200)).max(30),scope:z.array(z.string().max(100)).max(20),createdAt:z.string().max(50),evaluations:evaluation,baseline:evaluation}).nullable()}).optional(),
       scheduleHours:z.number().int().min(0).max(168),nextRunAt:z.number().nullable(),startedAt:z.string().optional(),finishedAt:z.string().nullable().optional()}).parse(await response.json());
   }
   async analyze(text: string, signal?: AbortSignal, retrieval?: { query:string; memories:{id:string;text:string}[] }): Promise<KnowledgeResult | undefined> {

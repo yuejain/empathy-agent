@@ -44,8 +44,8 @@ test('SSE handles named events, split CRLF, comments, multiline data and EOF', (
 });
 test('local emotion recognition recognizes phrases and unknown inputs stay neutral', async () => {
   const r = new EmotionRecognizer({ APP_MODE:'demo' });
-  assert.equal((await r.recognizeEmotion('今天我很焦虑')).primaryEmotion.name,'焦虑');
-  assert.equal((await r.recognizeEmotion('你好')).valence,0);
+  assert.equal((await r.recognizeLocally('今天我很焦虑')).primaryEmotion.name,'焦虑');
+  assert.equal((await r.recognizeLocally('你好')).valence,0);
 });
 test('direct conversation, exploration, action, review and goodbye are reachable', async () => {
   const o = new ConversationOrchestrator({APP_MODE:'demo'}); let state;

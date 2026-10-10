@@ -4,7 +4,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light"><title>留白 · 共情陪伴</title>
   <link rel="stylesheet" href="/styles.css">
-  <script src="/sse.js" defer></script><script src="/continuity.js" defer></script><script src="/app.js" defer></script><script src="/corpus.js" defer></script>
+  <script src="/sse.js" defer></script><script src="/continuity.js" defer></script><script src="/session-health.js" defer></script><script src="/app.js" defer></script><script src="/experiments.js" defer></script><script src="/corpus.js" defer></script>
 </head>
 <body>
   <div class="shell">
@@ -22,7 +22,8 @@
     <main>
       <header class="topbar"><div><span class="status-dot"></span>一个可以慢下来聊聊的地方</div><span class="mode" id="mode">连接中</span></header>
       <div class="notice" id="modeNotice" role="status">正在检查服务状态…</div>
-      <div class="model-tools"><span id="replyModel">云端回复</span><span id="knowledgeStatus">正在连接本地情绪 RAG…</span><button type="button" id="openMemory" class="secondary" disabled>长期记忆</button><button type="button" id="openCorpus" class="text-button">语料库</button></div>
+      <div class="model-tools"><span id="replyModel">云端回复</span><span id="knowledgeStatus">正在连接本地情绪 RAG…</span><button type="button" id="openMemory" class="secondary" disabled>长期记忆</button><button type="button" id="openExperiments" class="secondary" disabled>行动实验</button><button type="button" id="openCorpus" class="text-button">语料库</button></div>
+      <div id="sessionHealth" class="session-health" role="status" hidden><p id="sessionHealthText"></p><div class="memory-actions"><button id="healthContinue" class="text-button">继续这段对话</button><button id="healthClose" class="text-button">先休息，结束本次</button><button id="healthNew" class="secondary">开始新对话</button></div></div>
       <div class="chat-scroll" id="chatScroll">
         <section class="welcome" id="welcome"><span class="welcome-symbol" aria-hidden="true">✳</span><span class="eyebrow">此刻，留一点空白</span><h1>今天，你的心情怎么样？</h1><p>有些感受不容易说清。<br>你可以从最近发生的一件小事开始。</p>
           <div class="suggestions"><button data-prompt="最近有点迷茫，不知道该往哪里走。"><span>☁</span>最近有点迷茫<small>一起梳理那些说不清的感受</small></button><button data-prompt="我今天只想找个人说说，先不用给建议。"><span>☕</span>想找个人说说<small>先听你说，不急着找答案</small></button><button data-prompt="我想抽一张牌，做个联想练习。"><span>✧</span>从一张牌开始<small>用联想打开一个话题</small></button></div>
@@ -55,6 +56,18 @@
     <div id="memoryList" aria-label="记忆列表"></div>
     <div class="memory-footer"><p>记忆保存在本机；使用云端模型时，相关记忆会随请求发送给已配置的服务。清除浏览器 Cookie 后无法自动找回该档案。</p><button type="button" id="clearMemory" class="text-button danger">清空全部长期记忆</button></div>
   </dialog>
+  <dialog id="experimentDialog" aria-labelledby="experimentTitle">
+    <div class="memory-heading"><div><span class="eyebrow">一次小尝试，一次真实观察</span><h2 id="experimentTitle">行动实验与复盘</h2></div><button type="button" id="closeExperiments" class="secondary">关闭</button></div>
+    <p class="memory-intro">从你在意的事出发，试一个具体步骤。无效、没完成或不确定，也是值得保留的结果。内容随对应记忆一起保存、删除和更正。</p>
+    <p id="experimentError" class="error" role="alert" hidden></p>
+    <label for="experimentTask">选择事项</label><select id="experimentTask"></select>
+    <form id="experimentForm">
+      <label id="experimentNewTitle" for="experimentTitleInput">尝试名称<input id="experimentTitleInput" maxlength="150" placeholder="例如：尝试午休后散步十分钟"></label>
+      <p id="experimentState" role="status"></p><div id="experimentFields" class="experiment-fields"></div>
+      <div class="memory-actions"><button type="submit" class="secondary">保存记录</button><button type="button" data-experiment-action="start" class="secondary">开始尝试</button><button type="button" data-experiment-action="complete" class="secondary">记录完成</button><button type="button" data-experiment-action="review" class="secondary">完成复盘</button><button type="button" data-experiment-action="iterate" class="secondary">按调整开始下一轮</button><button type="button" data-experiment-action="cancel" class="text-button">撤回尝试</button></div>
+    </form>
+    <details class="continuity-panel"><summary>查看各轮原话记录</summary><div id="experimentHistory"></div></details>
+  </dialog>
   <dialog id="corpusDialog" aria-labelledby="corpusTitle">
     <div class="memory-heading"><h2 id="corpusTitle">公开语料库</h2><button type="button" id="closeCorpus" class="secondary">关闭</button></div>
     <p class="memory-intro">从配置好的公开来源更新语料，清洗后重建检索库。聊天与个人记忆不会加入公开语料库。</p>
@@ -62,6 +75,9 @@
     <div class="memory-actions"><button id="updateCorpus" class="secondary">抓取并更新</button><button id="rebuildCorpus" class="secondary">重建现有语料索引</button><button id="refreshCorpus" class="text-button">刷新状态</button></div>
     <label for="corpusSchedule">自动更新</label><select id="corpusSchedule"><option value="0">关闭</option><option value="24">每 24 小时</option><option value="168">每 7 天</option></select>
     <p class="memory-hint">自动更新仅在本地服务运行时执行。更新完成后新索引自动生效；失败时继续使用上一版。部分来源失败会保留其已有快照。</p>
+    <h3>情绪分类器版本</h3><p id="classifierStatus" role="status">读取版本信息后可查看评估和回退。</p><ul id="classifierMetrics"></ul>
+    <div class="memory-actions"><button id="retrainModel" class="secondary">训练并评估新版本</button><button id="rollbackModel" class="text-button" disabled>回退上一版本</button></div>
+    <p class="memory-hint">使用现有公开语料训练候选分类头，编码器保持不变。固定验证门槛通过后才切换；测试分区只报告结果。模型不会学习私人聊天。训练可能占用数分钟 CPU，日常语料更新不会自动重训。</p>
   </dialog>
 </body>
 </html>

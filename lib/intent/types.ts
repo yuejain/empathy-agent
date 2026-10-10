@@ -215,50 +215,21 @@ export interface FeedbackPattern {
   hint?: string;
 }
 
-// ==================== 意图历史 ====================
-
-/** 意图模式 */
-export interface IntentPattern {
-  dominantIntent: InteractionIntent;
-  intentDistribution: Record<string, number>;
-  patterns: Array<{
-    pattern: string;
-    confidence: number;
-    sessionsObserved: string[];
-  }>;
-  advicePreference: {
-    acceptsFrameworkAdvice: boolean;
-    rejectsDirectAdvice: boolean;
-    bestAdviceStyle: string;
-  };
-  communicationStyle: string;
-  metaFeedbackSummary: string;
-}
-
 // ==================== 模块配置 ====================
 
 /** 意图识别配置 */
 export interface IntentConfig {
   /** 是否启用安全快筛 */
   enableSafetyScreen: boolean;
-  /** 是否启用上下文增强 */
-  enableContextEnhanced: boolean;
   /** Level 1 置信度阈值 */
   level1ConfidenceThreshold: number;
-  /** 是否启用意图历史 */
-  enableIntentHistory: boolean;
   /** 默认策略（意图不明时） */
   defaultStrategy: RouteStrategy;
-  /** 是否启用自适应学习 */
-  enableAdaptiveLearning: boolean;
 }
 
 /** 默认配置 */
 export const DEFAULT_INTENT_CONFIG: IntentConfig = {
   enableSafetyScreen: true,
-  enableContextEnhanced: true,
   level1ConfidenceThreshold: 0.8,
-  enableIntentHistory: true,
   defaultStrategy: 'empathy_with_intent_probe',
-  enableAdaptiveLearning: true,
 };

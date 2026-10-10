@@ -11,6 +11,7 @@ function renderContinuity(view) {
     list.appendChild(row);
   }
   if(!view.tasks.length){const row=document.createElement('li');row.textContent='还没有可跟进的事项。';list.appendChild(row);}root.appendChild(list);
+  if(view.experiments?.length){const title=document.createElement('h3');title.textContent='行动实验与复盘';root.append(title);for(const experiment of view.experiments){const button=document.createElement('button');button.className='text-button';button.textContent=`${experiment.title} · 第 ${experiment.cycle} 轮 · ${experiment.next}`;button.addEventListener('click',()=>{$('memoryDialog').close();openExperiments(experiment.id);});root.append(button);}}
   const trend=document.createElement('h3');trend.textContent='跨会话情绪记录 · 近 30 天';root.appendChild(trend);
   const summary=document.createElement('p');summary.textContent=`${view.trend.label}（${view.trend.observations} 条记录）`;root.appendChild(summary);
   const timeline=document.createElement('ol');timeline.className='emotion-timeline';timeline.setAttribute('aria-label','有日期的情绪记录');

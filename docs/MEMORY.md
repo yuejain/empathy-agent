@@ -58,10 +58,13 @@ v1 首次载入会校验所有记录，创建一次 `.v1.bak` 原始备份，把
 | action: `confirm` | id；确认当前仍适用并续期，不自动认可过去/第三方表述 |
 | action: `resolve` / `delete` | id；结束或删除条目 |
 | action: `progress` | id + progress，可选 dueAt 时间戳或 null；更新事项状态及目标日期，保留用户操作证据 |
+| action: `experiment` | id + experiment: `{operation, fields?}`；operation 为 save/start/complete/review/iterate/cancel/remove；字段与证据规则见 [高级功能](ADVANCED_WORKFLOW.md) |
 | action: `clear` | 清空所有条目；保留设置，递增上下文版本 |
 | action: `settings` | capture 和/或 recall 布尔值；两开关独立 |
 
-`GET /api/memories` 还返回 `continuity`：跟进事项、情绪记录、旅程与联想历史。`GET /api/session` 返回当前聊天、长期记忆摘要、开场建议及当前联想选择。`DELETE /api/session` 只删除当前聊天。`ai_response.memory` 返回 `memoriesUsed` 与 `memoriesUpdated`（本轮记忆动作数量，包括清空/续期），不是置信度评分。
+`GET /api/memories` 还返回 `continuity`：跟进事项、实验当前轮、情绪记录、旅程与联想历史。实验属于对应条目的可选字段，不改变 v2 档案版本，旧文件可直接读取；实验全生命周期与原档案一起原子提交。更正事项正文会清除其旧实验；修改实验字段会失效旧上下文及不再有依据的复盘状态。
+
+`GET /api/session` 返回当前聊天、长期记忆摘要、开场建议、当前联想选择及健康状态；`GET /api/session/health` 可单独检查节奏。`POST /api/session` 支持继续与结束，不删除记忆。`DELETE /api/session` 只删除当前聊天。`ai_response.memory` 返回 `memoriesUsed` 与 `memoriesUpdated`（本轮记忆动作数量，包括清空/续期），不是置信度评分。
 
 ## 验证
 

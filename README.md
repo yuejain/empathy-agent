@@ -108,7 +108,9 @@ flowchart LR
 
 “长期记忆”面板新增行动进度、目标日期与跨会话情绪记录；聊天中的明确完成/撤回会关联原事项。陪伴阶段、开场与复盘使用这些记录，沟通方式也可以用“直接一点”“别总问问题”等反馈调整。联想练习新增文字意象、场景、关键词，支持 A/B/C 按钮、刷新后继续及记录用户亲自表达的联想。
 
-网页“语料库”可发起抓取清洗或只重建索引；任务在后台运行，完成后热加载。自动更新默认关闭，可选 24 小时或 7 天，需本地服务保持运行。不会抓取个人聊天，也不会在后台重新训练分类器。
+“行动实验”支持假设、具体尝试、观察方式、实际结果、复盘收获及下一轮调整；有日期的原话随对应长期记忆保存，完成不等于实验有效。上下文意图分析合并到已有记忆提取请求，不增加独立云端调用。会话达到闲置、时长或轮数阈值时，可选择继续、休息或开始新对话。
+
+网页“语料库”可发起抓取清洗、重建索引，或单独训练并评估候选分类器。固定评估门槛通过后才切换，并支持回退。自动语料更新默认关闭，可选 24 小时或 7 天，需本地服务保持运行；不会抓取个人聊天，也不会自动重训分类器。完整用法见 [行动闭环与高级功能](docs/ADVANCED_WORKFLOW.md)。
 
 模块接线与边界见 [架构说明](docs/ARCHITECTURE.md)。本机检索与云端阶段计时、Python 迁移可行性见 [性能与迁移评估](docs/PYTHON_MIGRATION.md)：当前主要等待云端模型，没有证据表明单纯换语言会带来大幅加速。
 
@@ -218,6 +220,7 @@ npm run security:check             # 扫描 Git 暂存区，不输出密钥内�
 node --env-file-if-exists=.env scripts/benchmark-pipeline.cjs         # 本地检索计时
 node --env-file-if-exists=.env scripts/benchmark-pipeline.cjs --cloud # 构造文本的云端分阶段计时
 node --env-file-if-exists=.env scripts/verify-memory-live.cjs # 真实云端跨会话测试，产生 API 费用
+node --env-file-if-exists=.env scripts/verify-advanced.cjs --cloud # 合并意图分析与实验结果提取，构造输入
 node --env-file-if-exists=.env scripts/verify-live.cjs # 只验收本地 RAG，不调用云端
 node --env-file-if-exists=.env scripts/verify-live.cjs --cloud # 本地 RAG + 真实云端中英文流式回复
 npm audit --registry=https://registry.npmjs.org

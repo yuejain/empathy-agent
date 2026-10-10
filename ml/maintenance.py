@@ -27,7 +27,7 @@ class Maintenance:
             self.state.update(scheduleHours=hours,nextRunAt=time.time()+hours*3600 if hours else None);self.save()
             return dict(self.state)
     def start(self,mode):
-        if mode not in ('rebuild','update'):raise ValueError('Invalid operation')
+        if mode not in ('rebuild','update','retrain','rollback'):raise ValueError('Invalid operation')
         with self.lock:
             if self.state['status']=='running':return False
             self.state.update(status='running',phase='queued',startedAt=datetime.now(timezone.utc).isoformat(),finishedAt=None);self.save()
@@ -37,7 +37,11 @@ class Maintenance:
         try:
             with corpus_lease(DATA/'reports/corpus-update.lock'):
                 steps=[('collect',['ml/corpus.py','--refresh'])] if mode=='update' else []
-                steps += [('index',['ml/build_index.py'])]
+                if mode=='retrain':steps=[('train',['ml/train_classifier.py','--candidate'])]
+                elif mode=='rollback':
+                    from model_registry import rollback
+                    rollback();steps=[]
+                else:steps += [('index',['ml/build_index.py'])]
                 with (DATA/'reports/maintenance.log').open('w',encoding='utf-8') as log:
                     for phase,args in steps:
                         with self.lock:self.state['phase']=phase;self.save()
@@ -46,6 +50,9 @@ class Maintenance:
             if mode=='update':
                 manifest=json.loads((DATA/'manifests/corpus.json').read_text(encoding='utf-8'))
                 partial=bool(manifest.get('failures'))
+            if mode=='retrain':
+                from model_registry import status
+                partial=status().get('candidate',{}).get('passed') is not True
             with self.lock:self.state.update(status='partial' if partial else 'success',phase='idle')
         except (OSError,ValueError,subprocess.SubprocessError):
             with self.lock:self.state.update(status='failed',phase='idle')

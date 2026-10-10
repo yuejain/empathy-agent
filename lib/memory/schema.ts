@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { experimentSchema } from './experiment-schema';
 
 export const kindSchema = z.enum(['emotion', 'activity', 'decision', 'profile']);
 export type MemoryKind = z.infer<typeof kindSchema>;
@@ -12,6 +13,7 @@ export const entrySchema = z.object({
   createdAt: time, updatedAt: time, expiresAt: time, reason: z.string().max(150),
   evidence: z.array(evidenceSchema).min(1).max(3), supersedes: z.array(z.string().uuid()).max(10).default([]),
   progress: z.enum(['planned', 'in_progress', 'blocked', 'completed', 'cancelled']).optional(), dueAt: time.optional(),
+  experiment: experimentSchema.optional(),
   reflection: z.object({game:z.enum(['tarot','iching','needs','image','scenario','keyword']),choice:z.number().int().min(0).max(2)}).strict().optional(),
 }).strict();
 export type MemoryRecord = z.infer<typeof entrySchema>;

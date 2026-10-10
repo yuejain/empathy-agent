@@ -16,7 +16,7 @@ export function responseEvent(result: OrchestratorOutput) {
     state: { current: m.state, phase: phases[m.state] || m.state, turnCount: result.updatedState.turnCount },
     memory: { memoriesUsed: m.memoryUsed, memoriesUpdated: m.memoryUpdated, processingTimeMs: m.processingTimeMs }, mode: m.mode,
     sources: m.sources || [], analysisSource: m.analysisSource, backend: m.backend,
-    retrieval:m.retrieval, timings:m.timings, continuity:m.continuity, reflection:m.reflection,
+    retrieval:m.retrieval, timings:m.timings, continuity:m.continuity, reflection:m.reflection, health:m.health,intentSource:m.intentSource,
     rag: m.rag ? { status: m.rag.status, emotion: m.rag.emotion, direction: m.rag.direction, evidenceCount: m.rag.evidence.length } : undefined,
   };
 }

@@ -4,6 +4,8 @@ import { ambiguous, eligible, fingerprint, historical, normalize, question, reje
 import { classifyStatement, extractStatements } from './extractor';
 import { z } from 'zod';
 import { findFollowUp, isFollowUpReference, progressFrom, progressLabels, taskRecord } from './follow-up';
+import { experimentOperationSchema } from './experiment-schema';
+import { changeExperiment, syncExperimentProgress, explicitExperiment } from './experiments';
 
 export class MemoryError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -78,30 +80,46 @@ export function prepareMemory(profile: MemoryProfile, input: string, origin: Mem
       const linked: Candidate = { kind: target.kind, key: target.key, text: input, quote: input, certain: true, certainty: target.certainty,
         resolve: progress === 'completed' || progress === 'cancelled', progress };
       // A short referential update is stored together with the original task, with evidence for each.
-      if (isFollowUpReference(input)) {
+      if (isFollowUpReference(input) || target.experiment) {
         target.progress = progress; target.status = linked.resolve ? 'resolved' : 'active'; target.updatedAt = origin.now;
         target.evidence = [...target.evidence, { sessionId: origin.sessionId, turnId: origin.turnId, quote: input, at: origin.now }].slice(-3);
         target.expiresAt = origin.now + TTL[target.kind];
+        syncExperimentProgress(target);
+        for(let i=direct.length-1;i>=0;i--)if(direct[i].key===target.key)direct.splice(i,1);
         p.contextEpoch++; audit(p, 'progress', target.id, origin.now);
       } else {
         const idx = direct.findIndex(c => c.text === input.replace(/[。.!；;]+$/u,''));
         if (idx >= 0) direct[idx] = linked; else direct.push(linked);
       }
     }
-    const candidates = [...direct.map(d => ({ ...d, replaces: inferred.find(c => c.kind === d.kind && c.key === d.key)?.replaces })), ...inferred.filter(c => !direct.some(d => d.kind === c.kind && d.key === c.key))];
+    const candidates = [...direct.map(d => ({ ...d, replaces: inferred.find(c => c.kind === d.kind && c.key === d.key)?.replaces })), ...inferred.filter(c => !direct.some(d => d.kind === c.kind && d.key === c.key) && !(target?.experiment && (c.key===target.key || c.replaces?.includes(target.id))))];
     for (const c of candidates.slice(0, 8)) {
       try { addCandidate(p, c, origin, c.extracted ? 'extracted' : 'statement'); }
       catch (error) { if (!(error instanceof MemoryError)) throw error; }
+    }
+    const explicit=explicitExperiment(input);
+    let experimentTarget=explicit.title ? p.entries.find(e=>e.text===explicit.title && e.experiment && e.status==='active') : p.entries.find(e=>e.id===focusId && e.experiment);
+    if(explicit.title && !experimentTarget && !rejection(explicit.title)) {
+      try {experimentTarget=addCandidate(p,{kind:'activity',key:'activity:'+fingerprint(explicit.title),text:explicit.title,certain:true,certainty:'tentative',progress:'planned'},origin,'statement');}catch{}
+    }
+    if(!experimentTarget && Object.keys(explicit.fields).length) {
+      const experiments=p.entries.filter(e=>e.experiment && ['active','resolved'].includes(e.status) && e.expiresAt>origin.now);
+      if(experiments.length===1)experimentTarget=experiments[0];
+    }
+    if(experimentTarget && (explicit.title || Object.keys(explicit.fields).length)) {
+      const copy=structuredClone(experimentTarget);
+      try {changeExperiment(copy,{operation:'save',fields:explicit.fields},origin,'user');p.entries[p.entries.indexOf(experimentTarget)]=copy;p.contextEpoch++;audit(p,'experiment',copy.id,origin.now);}catch{}
     }
   }
   return { profile: p, reply };
 }
 
 const mutationSchema = z.object({
-  revision: z.number().int().nonnegative(), action: z.enum(['add', 'edit', 'confirm', 'resolve', 'progress', 'delete', 'clear', 'settings']),
+  revision: z.number().int().nonnegative(), action: z.enum(['add', 'edit', 'confirm', 'resolve', 'progress', 'experiment', 'delete', 'clear', 'settings']),
   id: z.string().uuid().optional(), text: z.string().min(1).max(500).optional(), kind: kindSchema.optional(),
   capture: z.boolean().optional(), recall: z.boolean().optional(),
   progress: z.enum(['planned','in_progress','blocked','completed','cancelled']).optional(), dueAt: z.number().finite().nonnegative().nullable().optional(),
+  experiment: experimentOperationSchema.optional(),
 }).strict();
 export function mutateMemory(profile: MemoryProfile, body: unknown, origin: MemoryOrigin): MemoryProfile {
   const parsed = mutationSchema.safeParse(body); if (!parsed.success) throw new MemoryError('记忆操作格式无效。');
@@ -121,11 +139,17 @@ export function mutateMemory(profile: MemoryProfile, body: unknown, origin: Memo
   } else {
     const item = p.entries.find(e => e.id === op.id); if (!item) throw new MemoryError('记忆不存在。', 404);
     if (op.action === 'delete') { p.entries = p.entries.filter(e => e.id !== item.id); p.contextEpoch++; audit(p, 'delete', item.id, now); }
+    else if(op.action==='experiment') {
+      if(!op.experiment)throw new MemoryError('缺少实验操作。');
+      try {changeExperiment(item,op.experiment,origin);}catch(error){throw new MemoryError((error as Error).message);}
+      p.contextEpoch++;audit(p,'experiment',item.id,now);
+    }
     else if (op.action === 'resolve' || op.action === 'progress') {
       if (op.action === 'progress' && (!taskRecord(item) || !op.progress || !['active','resolved'].includes(item.status))) throw new MemoryError('请选择有效行动或决策及其进度。');
       item.progress = op.progress || 'cancelled'; item.status = ['completed','cancelled'].includes(item.progress) ? 'resolved' : 'active';
       if (op.dueAt !== undefined) item.dueAt = op.dueAt === null ? undefined : op.dueAt;
       item.reason = '用户手动更新进度'; item.updatedAt = now; item.expiresAt = now + TTL[item.kind];
+      syncExperimentProgress(item);
       item.evidence = [...item.evidence, { sessionId: origin.sessionId, turnId: origin.turnId, quote: `用户在管理面板将此项标记为：${progressLabels[item.progress]}`, at: now }].slice(-3);
       p.contextEpoch++; audit(p, 'progress', item.id, now);
     }
@@ -134,6 +158,7 @@ export function mutateMemory(profile: MemoryProfile, body: unknown, origin: Memo
       if (!text) throw new MemoryError('请填写更正内容。');
       const reason = rejection(text); if (reason) throw new MemoryError(reason);
       if (ambiguous(text) || historical(text) || question(text)) throw new MemoryError('请先更正为当前的自身情况，避免把过去或他人的情况当作现在。');
+      if(op.action==='confirm' && item.experiment){item.expiresAt=now+TTL[item.kind];item.updatedAt=now;item.source='confirmed';p.contextEpoch++;audit(p,'confirm',item.id,now);return p;}
       // Redact the replaced payload, including its old evidence, rather than retaining dirty text in an audit log.
       p.entries = p.entries.filter(e => e.id !== item.id); p.contextEpoch++;
       const c = classifyStatement(text, op.kind || item.kind);

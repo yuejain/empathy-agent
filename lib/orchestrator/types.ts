@@ -199,6 +199,7 @@ export interface Turn {
 
 /** 会话状态 */
 export interface SessionState {
+  healthCheckpoint?: {at:string;turnCount:number};
   // 基础信息
   sessionId: string;
   userId: string;
@@ -287,6 +288,8 @@ export interface OrchestratorOutput {
     backend?: 'cloud' | 'demo';
     rag?: import('../emotion-rag').EmotionRagContext;
     timings?: Record<string,number>;
+    health?: {status:string;message?:string};
+    intentSource?: 'merged-context'|'local-rules';
     retrieval?: { mode:'semantic-hybrid' | 'lexical-fallback'; expanded:boolean; candidates:number; recalled:number };
     continuity?: ReturnType<typeof import('../context/continuity').continuityView>;
     reflection?: import('../tarot/reflection-session').ReflectionSession;

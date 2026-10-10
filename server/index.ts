@@ -31,6 +31,8 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
     ['/sse.js', { content: readFileSync(resolve(ROOT, 'dist/public/sse.js')), type: 'text/javascript; charset=utf-8' }],
     ['/continuity.js', { content: readFileSync(resolve(ROOT, 'dist/public/continuity.js')), type: 'text/javascript; charset=utf-8' }],
     ['/corpus.js', { content: readFileSync(resolve(ROOT, 'dist/public/corpus.js')), type: 'text/javascript; charset=utf-8' }],
+    ['/experiments.js', { content: readFileSync(resolve(ROOT, 'dist/public/experiments.js')), type: 'text/javascript; charset=utf-8' }],
+    ['/session-health.js', { content: readFileSync(resolve(ROOT, 'dist/public/session-health.js')), type: 'text/javascript; charset=utf-8' }],
     ['/styles.css', { content: readFileSync(resolve(ROOT, 'dist/public/styles.css')), type: 'text/css; charset=utf-8' }],
   ]);
   const server = createServer(async (req, res) => {
@@ -52,7 +54,7 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
         json(res, 200, { ok: true, mode: gateway.mode, model: gateway.mode === 'live' ? gateway.model : null,
           persistence: env.SESSION_PERSISTENCE !== 'false', maxMessageLength: 2000, local: await knowledge.health() }); return;
       }
-      if (!['/api/session', '/api/chat', '/empathy-agent', '/api/stop', '/api/memories','/api/corpus'].includes(url.pathname)) throw new HttpError(404, '接口不存在。');
+      if (!['/api/session', '/api/session/health', '/api/chat', '/empathy-agent', '/api/stop', '/api/memories','/api/corpus'].includes(url.pathname)) throw new HttpError(404, '接口不存在。');
       const cookie = req.headers.cookie?.split(';').map(x => x.trim()).find(x => x.startsWith('empathy-owner='))?.slice('empathy-owner='.length);
       const owner = cookie && /^[0-9a-f-]{36}$/.test(cookie) ? cookie : randomUUID();
       res.setHeader('Set-Cookie', `empathy-owner=${owner}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`);
@@ -60,14 +62,18 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
       if (typeof sessionId !== 'string' || !ID.test(sessionId)) throw new HttpError(400, '会话编号无效，请刷新页面。');
       const key = `${owner}:${sessionId}`;
       const ownerBusy = () => [...active.keys()].some(k => k.startsWith(owner + ':'));
+      if(url.pathname==='/api/session/health') {
+        if(req.method!=='GET')throw new HttpError(405,'请求方法不支持。');
+        json(res,200,orchestrator.checkSessionHealth(key,store.get(owner,sessionId)));return;
+      }
       if (url.pathname === '/api/corpus') {
         if (!['GET','POST'].includes(req.method || '')) throw new HttpError(405,'请求方法不支持。');
-        let operation: {action:'rebuild'|'update'} | {scheduleHours:0|24|168} | undefined;
+        let operation: {action:'rebuild'|'update'|'retrain'|'rollback'} | {scheduleHours:0|24|168} | undefined;
         if (req.method === 'POST') {
           if (!req.headers['content-type']?.toLowerCase().startsWith('application/json')) throw new HttpError(415,'请使用 JSON 请求。');
           const body = await readBody(req) as any;
           if (!body || typeof body !== 'object' || Object.keys(body).length !== 1) throw new HttpError(400,'语料操作格式无效。');
-          if (['rebuild','update'].includes(body.action)) operation={action:body.action};
+          if (['rebuild','update','retrain','rollback'].includes(body.action)) operation={action:body.action};
           else if ([0,24,168].includes(body.scheduleHours)) operation={scheduleHours:body.scheduleHours};
           else throw new HttpError(400,'语料操作格式无效。');
         }
@@ -86,6 +92,18 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
         json(res, 200, memoryView(updated, Date.now())); return;
       }
       if (url.pathname === '/api/session') {
+        if(req.method==='POST') {
+          if(!req.headers['content-type']?.startsWith('application/json'))throw new HttpError(415,'请使用 JSON 请求。');
+          const body=await readBody(req) as any;
+          if(!body || Object.keys(body).length!==1 || !['continue','close'].includes(body.action))throw new HttpError(400,'会话操作格式无效。');
+          if(ownerBusy())throw new HttpError(409,'请先停止当前回复。');
+          const state=store.get(owner,sessionId);if(!state)throw new HttpError(404,'会话不存在。');
+          if(state.currentState==='SAFETY_PROTOCOL')throw new HttpError(409,'安全支持期间请直接在对话中说明你的近况。');
+          const now=new Date().toISOString();state.lastActiveAt=now;
+          if(body.action==='continue'){state.healthCheckpoint={at:now,turnCount:state.turnCount};if(state.currentState==='SESSION_CLOSE')state.currentState='EMPATHY_PHASE';}
+          else {state.currentState='SESSION_CLOSE';state.currentSubState=undefined;}
+          store.set(owner,sessionId,state);json(res,200,{health:orchestrator.checkSessionHealth(key,state)});return;
+        }
         if (req.method === 'GET') {
           const state = store.get(owner, sessionId);
           const memory = store.getMemory(owner);

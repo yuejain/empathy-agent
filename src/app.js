@@ -20,6 +20,8 @@ function setBusy(busy) {
   $('newChat').disabled = $('clearChat').disabled = $('exportChat').disabled = !ready || busy;
   $('playGame').disabled = $('game').disabled = !ready || busy;
   $('openMemory').disabled = !ready || busy;
+  $('openExperiments').disabled = !ready || busy;
+  $('sessionHealth').querySelectorAll('button').forEach(button=>{button.disabled=!ready||busy;});
   $('reflectionChoices').querySelectorAll('button').forEach(b=>{b.disabled=!ready || busy;});
   document.querySelectorAll('[data-prompt]').forEach(b => b.disabled = !ready || busy);
   $('stopButton').hidden = !busy; $('pending').hidden = !busy;
@@ -50,6 +52,7 @@ async function loadSession() {
   $('phase').textContent = phaseNames[data.state] || data.state;
   $('memoryCount').textContent = data.memories.length;
   renderReflection(data.reflection);
+  renderSessionHealth(data.health);
   const preference=data.memory?.continuity?.preferredEntry;
   if(!data.history.length && preference && preference!=='direct')$('game').value=preference;
   const opening=document.querySelector('#welcome > p');if(opening && data.opening)opening.textContent=data.opening;
@@ -100,6 +103,7 @@ async function sendMessage() {
         else addMessage('assistant', data.content, data.mode === 'demo' ? '本地演示回复' : '');
         const row = partialRow || $('messages').lastElementChild;
         renderReflection(data.reflection);
+        renderSessionHealth(data.health);
         if (data.rag?.direction) {
           const note = document.createElement('details'); note.className = 'source-note emotion-note';
           const title = document.createElement('summary'); title.textContent = `本轮情绪参考 · ${data.rag.direction.label}`; note.appendChild(title);
@@ -226,6 +230,7 @@ function renderMemory() {
     if (item.status === 'active' && ['activity', 'decision'].includes(item.kind)) action('结束 / 撤回', () => changeMemory({ action: 'resolve', id: item.id }));
     action('删除', () => changeMemory({ action: 'delete', id: item.id }));
     if(['activity','decision'].includes(item.kind) && ['active','resolved'].includes(item.status)) {
+      action(item.experiment?'实验与复盘':'建立行动实验',()=>{$('memoryDialog').close();openExperiments(item.id);});
       const controls=document.createElement('div');controls.className='progress-controls';
       const select=document.createElement('select');select.setAttribute('aria-label','事项进度');
       for(const [value,label] of Object.entries(progressNames)){const option=document.createElement('option');option.value=value;option.textContent=label;select.appendChild(option);}
