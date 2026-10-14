@@ -87,9 +87,9 @@ test('tarot actually draws a card and returns to conversation', async () => {
 test('session store persists, isolates owners and deletes without corrupting other users', async t => {
   const dir=mkdtempSync(join(tmpdir(),'empathy-test-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const file=join(dir,'sessions.json');
   const o=new ConversationOrchestrator({APP_MODE:'demo'}), r=await o.processTurn({userId:'a',sessionId:'a:s',userInput:'记住：我叫小林'});
-  const store=new SessionStore(file); store.set('a','s',r.updatedState,r.updatedMemory,0);
+  const store=new SessionStore(file); await store.set('a','s',r.updatedState,r.updatedMemory,0);
   const reopened=new SessionStore(file); assert.equal(reopened.getMemory('a').entries[0].text,'我叫小林'); assert.equal(reopened.get('b','s'),undefined);
-  reopened.delete('a','s'); assert.equal(new SessionStore(file).get('a','s'),undefined); assert.equal(new SessionStore(file).getMemory('a').entries.length,1);
+  await reopened.delete('a','s'); assert.equal(new SessionStore(file).get('a','s'),undefined); assert.equal(new SessionStore(file).getMemory('a').entries.length,1);
   writeFileSync(file,'BROKEN'); assert.throws(()=>new SessionStore(file),/原文件未覆盖/); assert.equal(readFileSync(file,'utf8'),'BROKEN');
 });
 test('fetch adapter emits valid SSE for a real Request and rejects missing session id', async () => {

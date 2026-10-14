@@ -7,6 +7,7 @@ import {
   IntentRecognitionResult, IntentConfig, DEFAULT_INTENT_CONFIG,
   SafetyIntent, InteractionIntent, SubIntent,
 } from './types';
+import { recognizeSubIntent } from './sub-intent';
 
 // ==================== Level 0: 安全快筛 ====================
 
@@ -204,6 +205,7 @@ export class IntentClassifier {
       return {
         isSafetyIntent: false,
         primaryIntent: level1Result.intent,
+        subIntent: recognizeSubIntent(input, level1Result.intent),
         confidence: level1Result.confidence,
         recognitionLevel: 1,
         reasoning: `Level 1 关键词匹配`,
@@ -216,6 +218,7 @@ export class IntentClassifier {
     return {
       isSafetyIntent: false,
       primaryIntent: level1Result.intent,
+      subIntent: recognizeSubIntent(input, level1Result.intent),
       confidence: level1Result.confidence,
       recognitionLevel: 1,
       reasoning: '本地分类；上下文分析由编排器合并调用后覆盖',

@@ -28,7 +28,7 @@ for (const file of files) {
   const name = path.posix.basename(file);
   if ((/^\.env(?:\..+)?$/.test(name) && name!=='.env.example') ||
       /^(?:\.npmrc|\.pypirc|credentials.*\.json|service-account.*\.json|id_rsa|id_ed25519)$/.test(name) ||
-      /\.(?:pem|key|p12|pfx)$/i.test(name) ||
+      /\.(?:pem|key|p12|pfx|sqlite3(?:-wal|-shm|\.lock)?)$/i.test(name) ||
       /^(?:\.data\/|artifacts\/|models\/local\/|data\/(?:raw|processed|training|index|reports|manifests|cache)\/)/.test(file)) {
     problems.push({file,reason:'local-only file tracked'}); continue;
   }

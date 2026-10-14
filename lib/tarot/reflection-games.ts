@@ -2,7 +2,12 @@ import { CardMatcher } from './card-matcher';
 import { EntrySelector } from './alternatives';
 
 export type ReflectionGame = 'tarot' | 'iching' | 'needs' | 'image' | 'scenario' | 'keyword';
+export function requestsGameRecommendation(text: string): boolean {
+  return !/不要推荐|不用推荐|不想玩|不做练习|don't recommend|no exercises/i.test(text)
+    && /(?:推荐|选).{0,8}(?:一种|一个).{0,8}(?:联想|练习|游戏)|换一种.{0,6}(?:练习|游戏)|recommend.{0,15}(?:exercise|game)|another.{0,10}(?:exercise|game)/i.test(text);
+}
 export function requestedGame(text: string): ReflectionGame | undefined {
+  if (requestsGameRecommendation(text)) return;
   if (/不想|不要|不抽|不用|停止|跳过/.test(text)) return;
   if (/周易|易经|八卦|六爻|掷.*(币|钱)/.test(text)) return 'iching';
   if (/情绪.*(卡|游戏)|需要卡|需求卡/.test(text)) return 'needs';
@@ -33,7 +38,12 @@ export function castCoins(random = Math.random) {
     changedLower: trigram(changed.slice(0, 3)), changedUpper: trigram(changed.slice(3)), moving: lines.flatMap((v, i) => v === 6 || v === 9 ? [i + 1] : []) };
 }
 
-export function reflectionGame(game: ReflectionGame, context: { userId: string; sessionId: string; emotion: string; intensity: number }, random = Math.random): string {
+export interface ReflectionContext {
+  userId: string; sessionId: string; emotion: string; intensity: number;
+  knownThemes?: string[]; knownConflicts?: string[];
+}
+
+export function reflectionGame(game: ReflectionGame, context: ReflectionContext, random = Math.random): string {
   if (['image','scenario','keyword'].includes(game)) {
     const entry = new EntrySelector().getEntry(game as 'image'|'scenario'|'keyword')!;
     const start = Math.floor(random() * entry.items.length);
@@ -41,7 +51,8 @@ export function reflectionGame(game: ReflectionGame, context: { userId: string; 
     return `${game === 'image' ? '意象联想（文字画面）' : entry.title}\n\n${items.map((item,i) => `${'ABC'[i]}. ${item.text}`).join('\n')}\n\n可以选 A/B/C 或说“都不像”“跳过”。这些是联想素材，不代表你的经历或心理结论。`;
   }
   if (game === 'tarot') {
-    const card = new CardMatcher().selectCards({ userId: context.userId, sessionId: context.sessionId, trigger: 'user_request', currentEmotion: context.emotion, emotionIntensity: context.intensity }).cards[0];
+    const card = new CardMatcher(random).selectCards({ userId: context.userId, sessionId: context.sessionId, trigger: 'user_request', currentEmotion: context.emotion, emotionIntensity: context.intensity,
+      knownThemes:context.knownThemes, knownConflicts:context.knownConflicts }).cards[0];
     const reversed = random() < .5;
     return `塔罗联想 · ${card.displayName}（${reversed ? '逆位：从阻力与需要理解自己' : '正位：从资源与可能理解自己'}）\n\n${card.description}\n\nA. ${card.aspects.A}\nB. ${card.aspects.B}\nC. ${card.aspects.C}\n\n正逆位只是换一个观察角度，不代表吉凶，也不预测未来。可以选 A/B/C 继续聊，或说“都不像”“跳过”。`;
   }

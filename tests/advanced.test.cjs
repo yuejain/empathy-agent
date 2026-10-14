@@ -67,7 +67,7 @@ test('experiment API respects revisions and owners, and failed streamed turns ro
 });
 test('session health supports continue, close and new conversation without deleting memory',async t=>{
  const store=new SessionStore(),{url}=await app(t,undefined,store),c=client(url);await c.chat('我正在写论文');
- const record=[...store.records.values()][0],state=record.state;state.turnCount=51;store.set(record.owner,c.id,state);
+ const record=[...store.records.values()][0],state=structuredClone(record.state);state.turnCount=51;await store.set(record.owner,c.id,state);
  assert.equal((await(await c.request('/api/session/health')).json()).status,'turn_limit');
  assert.equal((await c.request('/api/session',{method:'POST',body:JSON.stringify({action:'continue'})})).status,200);
  assert.equal((await(await c.request('/api/session/health')).json()).status,'healthy');

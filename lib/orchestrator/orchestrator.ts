@@ -3,7 +3,7 @@ import { SafetyClassifier, RuleLayer } from '../safety-classifier/classifier';
 import { crisisResponse } from '../crisis-response';
 import { EmotionRecognizer } from '../emotion-recognition';
 import { EmpathyDecisionEngine, OutputFilter } from '../empathy-decision';
-import { IntentClassifier, IntentRouter } from '../intent';
+import { IntentClassifier, IntentRouter, compatibleSubIntent, routeSubState } from '../intent';
 import { communicationGuidance } from '../intent/router';
 import { requestedGame } from '../tarot/reflection-games';
 import { validReflection, reflectionPrompt } from '../tarot/reflection-session';
@@ -72,8 +72,10 @@ export class ConversationOrchestrator {
     state.reflection = validReflection(state.reflection, memory.contextEpoch);
     const command = memoryCommand(userInput), game = requestedGame(userInput);
     const gameReply = !game && state.reflection ? this.reflectionManager.select(state.reflection, userInput) : undefined;
+    const gameRecommendation = !game && !gameReply && !command
+      ? this.reflectionManager.recommend(userInput, state.currentEmotion.primaryEmotion, memory, state.reflection?.game) : undefined;
     const origin = { sessionId, turnId:String(state.turnCount + 1), now:Date.now() };
-    const earlyMemory = game || gameReply ? memory : prepareMemory(memory, userInput, origin, [], state.focusMemoryId).profile;
+    const earlyMemory = game || gameReply || gameRecommendation ? memory : prepareMemory(memory, userInput, origin, [], state.focusMemoryId).profile;
     const retrieval = retrievalRequest(userInput, earlyMemory, historyFor(earlyMemory));
     const timings: Record<string, number> = {};
     const timed = async <T>(name:string, work:Promise<T>):Promise<T> => {
@@ -84,7 +86,7 @@ export class ConversationOrchestrator {
     const rule = new RuleLayer().classify(userInput);
     const continuingSafety = state.currentState === 'SAFETY_PROTOCOL' && !/我现在(很)?安全|我已经安全|有人陪着我|已经联系.*(家人|朋友|急救)|I am safe now|I'm safe now/i.test(userInput);
     const quickCrisis = rule.preliminaryLevel === 'L2' || continuingSafety;
-    const deterministic = !!(command || game || gameReply);
+    const deterministic = !!(command || game || gameReply || gameRecommendation);
     const classifier = new SafetyClassifier(this.env, { enableModelLayer: !quickCrisis && !deterministic });
     const context = historyFor(memory).map(t => ({ role: t.role, content: t.content, timestamp: t.timestamp,
       emotionValence: t.emotion?.valence }));
@@ -96,10 +98,7 @@ export class ConversationOrchestrator {
     ]);
     timings.preparationMs = Date.now()-started;
     const localEmotion = knowledge && knowledge.confidence >= .55 ? localEmotions[knowledge.emotion] : undefined;
-    const recognized = localEmotion ? {
-      ...this.emotionRecognizer.recognizeLocally(userInput), primaryEmotion: { ...this.emotionRecognizer.recognizeLocally(userInput).primaryEmotion, name: localEmotion.name },
-      valence: localEmotion.valence, arousal: localEmotion.arousal,
-    } : this.emotionRecognizer.recognizeLocally(userInput);
+    const recognized = this.emotionRecognizer.recognizeWithKnowledge(userInput, knowledge);
     signal?.throwIfAborted();
     const previous = state.emotionTrajectory.slice(-3);
     const delta = previous.length ? recognized.intensity - previous.reduce((sum, e) => sum + e.intensity, 0) / previous.length : 0;
@@ -142,7 +141,7 @@ export class ConversationOrchestrator {
         response = cleared.reply + '\n\n' + response;
       }
     } else {
-      const prepared = game || gameReply ? { profile:memory,reply:undefined } : prepareMemory(memory, userInput, origin, analysis.candidates, state.focusMemoryId);
+      const prepared = game || gameReply || gameRecommendation ? { profile:memory,reply:undefined } : prepareMemory(memory, userInput, origin, analysis.candidates, state.focusMemoryId);
       memory = prepared.profile;
       updateExperiments(memory,analysis.experiments,userInput,origin);
       const beforeAffectRevision=memory.revision;
@@ -170,11 +169,12 @@ export class ConversationOrchestrator {
         recentHistory: history.map(t => t.content), currentState: state.currentState,
         emotion: { primary: emotion.primaryEmotion, intensity: emotion.intensity, valence: emotion.valence },
       });
-      if(analysis.intent && !intent.isSafetyIntent) {intent.primaryIntent=analysis.intent.intent;intent.confidence=analysis.intent.confidence;intent.recognitionLevel=2;intent.reasoning='与记忆提取合并的上下文意图分析';}
+      if(analysis.intent && !intent.isSafetyIntent) {intent.primaryIntent=analysis.intent.intent;intent.subIntent=analysis.intent.subIntent;intent.confidence=analysis.intent.confidence;intent.recognitionLevel=2;intent.reasoning='与记忆提取合并的上下文意图分析';}
       const listen = /只想.{0,8}(?:说|倾诉|听)|(?:不要|不用|别|不想).{0,6}(?:建议|办法)|just (?:want|need).{0,30}(?:listen|vent)|(?:no|don't|do not|without).{0,12}advice/i.test(userInput);
       const completion = continuity.tasks.some(t => t.progress === 'completed' && t.updatedAt === origin.now);
       if (listen) intent.primaryIntent = 'L2.1_emotional_venting';
       else if (completion || /复盘|回顾|进展|进度|review|progress/i.test(userInput)) intent.primaryIntent = 'L2.4_review_request';
+      intent.subIntent = compatibleSubIntent(intent.primaryIntent, intent.subIntent);
       const router = new IntentRouter(), route = router.makeRouteDecision(intent,state.currentState,emotion);
       const communication = communicationGuidance(memory.settings.recall ? memory.entries : [],userInput);
       // Explicit intent can select a phase; incidental keywords and old plans cannot push the user forward.
@@ -184,18 +184,21 @@ export class ConversationOrchestrator {
         if (target) decision = { ...decision,nextState:target,empathyLevel:target === 'ACTION_PHASE' ? 'L5' : target === 'REVIEW_PHASE' ? 'L4' : 'L2',
           shouldProgress:target !== 'EMPATHY_PHASE',constraints:listen ? {empathyOnly:true,noActionQuestions:true} : {},reason:'按本轮明确意图路由' };
         decision=applyJourneyPolicy(decision,state,continuity.journey,intent.primaryIntent,userInput);
+        decision.nextSubState = routeSubState(route, decision.nextState) || decision.nextSubState;
       }
       if (prepared.reply) {
         response = prepared.reply;
       } else if (gameReply) {
         response = gameReply;
+      } else if (gameRecommendation) {
+        response = gameRecommendation;
       } else if (decision.nextState === 'TAROT_ENTRY') {
         if ((state.tarotDraws || 0) >= 3) {
           response = '这次已经抽过三张牌了。我们可以从刚才有共鸣的部分继续聊，也可以换一个话题。';
         } else {
           state.tarotDraws = (state.tarotDraws || 0) + 1;
           const draw = this.reflectionManager.start(game || 'tarot', { userId, sessionId,
-            emotion: state.turnCount ? state.currentEmotion.primaryEmotion : emotion.primaryEmotion, intensity: emotion.intensity },memory.contextEpoch);
+            emotion: state.turnCount ? state.currentEmotion.primaryEmotion : emotion.primaryEmotion, intensity: emotion.intensity },memory.contextEpoch,memory);
           response = draw.response; state.reflection = draw.session;
         }
       } else if (this.gateway.mode === 'demo') {
@@ -334,7 +337,7 @@ export class ConversationOrchestrator {
     const now = new Date().toISOString();
 
     // 状态转换
-    if (decision.nextState !== state.currentState) {
+    if (decision.nextState !== state.currentState || decision.nextSubState !== state.currentSubState) {
       state.stateHistory.push({
         fromState: state.currentState,
         fromSubState: state.currentSubState,

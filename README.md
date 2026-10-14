@@ -1,12 +1,12 @@
 # 留白 · Empathy Agent
 
-[![Validate local app](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml/badge.svg?branch=codex%2Fassistant-affect)](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml)
+[![Validate local app](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml/badge.svg?branch=codex%2Fperformance-python)](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml)
 
 一个在本机运行的情感陪伴应用，界面为中文，对话支持中英文。围绕持续交流，提供真实流式回复、跨会话记忆、情绪增强检索、行动实验与复盘，以及可查看和重置的助手情感状态。
 
 **本地小模型负责用户情绪分析与 RAG，情感模块维护助手自身的计算性状态，云端大模型负责最终回复。** 云端支持 OpenAI 兼容 API；没有密钥时可以运行明确标注的规则演示。
 
-当前版本：长期记忆与行动闭环已通过 [PR #2](https://github.com/yuejain/empathy-agent/pull/2) 合并；助手情感模块在 **`codex/assistant-affect`** 分支，通过 [PR #3](https://github.com/yuejain/empathy-agent/pull/3) 提交。下方克隆命令包含该模块；仅使用已合并版本时可克隆 `main`。
+当前版本：长期记忆、行动闭环和助手情感已合并到 `main`。**`codex/performance-python`** 增加 Python SQLite 事务存储、RAG/流式渲染优化，并补齐子意图、主题匹配与联想叙事。下方命令包含这些更新；实现范围、正负性能结果及复现方法见 [性能诊断](docs/PERFORMANCE.md)。
 
 [快速运行](#快速运行) · [云端模型](#接入真实模型) · [功能入口](#已接通的功能) · [长期记忆](#长期记忆) · [行动实验](#行动实验与复盘) · [助手情感](#助手情感模块) · [本地模型与语料](#本地模型与语料) · [验证](#验证)
 
@@ -17,7 +17,7 @@
 网页服务要求 Git 和 **Node.js 22.9+**。基础云端聊天或规则演示无需 Python、GPU 或数据库。本地情绪 RAG 需要 Python，在线分析运行在 CPU；Windows 配套安装脚本默认安装 CPU 版 PyTorch，分类训练也可选择 CUDA 加速。
 
 ```bash
-git clone --branch codex/assistant-affect https://github.com/yuejain/empathy-agent.git
+git clone --branch codex/performance-python https://github.com/yuejain/empathy-agent.git
 cd empathy-agent
 npm ci
 ```
@@ -239,19 +239,21 @@ LOCAL_ML_URL=http://127.0.0.1:3001
 
 `SESSION_PERSISTENCE=false` 关闭磁盘保存；`DATA_DIR` 可指定保存目录。请避免将数据目录加入网盘或公开仓库。HttpOnly 所有者 cookie 有效期为 365 天，每次访问 API 延长；同一浏览器的新会话共享记忆。**不支持跨浏览器或跨设备同步**，清除站点 cookie 后不能自动恢复原身份。
 
+档案较多时可设置 `SESSION_STORAGE=sqlite`，将持久化交给 **Python 3.11 标准库**，无需 Torch 或运行 RAG 服务。启动时自动发现 `.venv-ml` 或 PATH 中的 Python，也可设置 `PYTHON_EXECUTABLE`。首次将校验后的 JSON 导入 `.data/sessions.sqlite3`，此后按变更记录提交，会话与记忆保持同一事务。旧 JSON 仅保留作迁移备份；数据库存在后拒绝切回旧 JSON，避免恢复已删除的内容。数据库同样未加密，完整迁移、备份与失败边界见 [Python 存储说明](docs/PERFORMANCE.md#python-存储的使用与迁移)。
+
 检索来源链接和情绪参考只在本次回复中展示，刷新恢复的是文字记录。本地 RAG 接收当前消息、扩展查询与有界个人记忆候选，不接收云端凭据，也不把候选写入公共索引。云端服务接收当前消息、有效上下文、相关记忆、检索片段和情感状态，用于合并分析、安全评估与最终回复。
 
 服务只监听 `127.0.0.1`。这是本机个人使用版本，没有账号、远程登录、数据库集群或多进程协调；不要直接当作公网多用户服务部署。原 EdgeOne 配置保留供迁移参考，当前未验证 EdgeOne 发布，原 `edgeone makers dev` 命令不是当前启动路径。
 
-尚未接入图片上传分析、通用联网搜索、外部通知、账号或跨设备同步。语料爬虫只处理已配置的公开来源，不能当成聊天中的实时联网搜索。旧本地生成训练和安全训练示例属于研究代码，不是运行中的服务；Web 后端仍使用 Node.js / TypeScript，Python 承担本地模型与语料任务。
+尚未接入图片上传分析、通用联网搜索、外部通知、账号或跨设备同步。语料爬虫只处理已配置的公开来源，不能当成聊天中的实时联网搜索。旧本地生成训练和安全训练示例属于研究代码，不是运行中的服务；Node.js / TypeScript 承担网页、SSE 与领域校验，Python 承担本地模型、语料及可选 SQLite 持久化。
 
 AI 回复与情绪/风险分类是启发式结果，可能出错；本项目面向成年人，不是医疗服务，不承诺诊断或危机识别准确率。紧急危险请联系当地急救；中国大陆 120 / 110，心理援助热线 [12356（国家卫健委通知）](https://www.nhc.gov.cn/yzygj/c100068/202412/49a1a65386cd4be582d4702fd0926ee8.shtml)。其他地区使用当地资源。
 
 ## 验证
 
-最近功能验收（2026-10-10）通过 84 项 Node、26 项桌面/手机浏览器和 21 项 Python 测试，共 131 项。覆盖联合检索、长期记忆、行动实验、会话节奏、语料维护，以及助手情感的连续性、隐私开关、重置和失败回滚。具体范围与真实服务联调记录见 [验收记录](docs/REVIEW.md)，最新 CI 状态见 [Actions](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml)。这些结果验证实现与链路，不证明情感主观体验或陪伴效果。
+最近功能验收（2026-10-14）通过 103 项 Node、34 项桌面/手机浏览器和 34 项 Python 测试，共 171 项。覆盖记忆/实验/情感、SQLite 迁移与回滚、排队取消、RAG 一致性、子意图和流式渲染。大档案模拟负载下，保存中位从约 44 ms 降到 2 ms，整轮从约 189 ms 降到 104 ms；小档案和启动存在开销，真实云端等待未改变，详见 [完整性能范围](docs/PERFORMANCE.md)。历次真实服务联调记录见 [验收记录](docs/REVIEW.md)，最新 CI 状态见 [Actions](https://github.com/yuejain/empathy-agent/actions/workflows/ci.yml)。这些结果不证明情感主观体验或陪伴效果。
 
-常规检查不需要云端密钥：
+常规检查不需要云端密钥；完整 Node 回归含 SQLite 跨进程测试，需安装 Python 3.11（应用的 JSON 模式本身仍不需要 Python）：
 
 ```powershell
 npm test                          # 构建、核心模块和 HTTP 集成测试
@@ -289,6 +291,7 @@ API 联调用本机模拟服务验证模型名称、地址、认证、上下文�
 | --- | --- |
 | `server/index.ts` | 本地 HTTP、请求验证、所有者隔离、限流、SSE、停止接口 |
 | `server/session-store.ts` | 本地有界持久化、校验、保留期与删除 |
+| `server/python-storage.ts`、`ml/session_storage.py` | Python SQLite 本地管道、一次迁移、差量原子事务与独占租约 |
 | `lib/gateway.ts` | 统一模型接口、地址标准化、超时、取消和脱敏错误 |
 | `lib/orchestrator/` | 主对话链路、并行准备、合并分析、实验闭环、会话节奏与游戏入口 |
 | `lib/memory/` | 主动提取、原话校验、版本替代、时效、实验记录与管理操作 |
@@ -298,10 +301,12 @@ API 联调用本机模拟服务验证模型名称、地址、认证、上下文�
 | `lib/local-knowledge.ts`、`ml/serve.py` | 本地情绪分类和向量检索接口 |
 | `lib/emotion-rag.ts` | 结构化情绪指向、回应方向、检索证据到云端的桥接 |
 | `ml/` | 来源配置、采集清洗、模型下载、训练与评估 |
+| `ml/retrieval.py` | 公开索引预计算、向量筛选与有界排序；不缓存个人文本 |
 | `ml/maintenance.py`、`ml/model_registry.py` | 语料维护、候选分类器评估、版本切换与回退 |
 | `lib/tarot/reflection-games.ts` | 六类联想游戏的题目、选项与回应规则 |
 | `agents/empathy-agent/` | Fetch 风格适配器及事件映射；本地服务负责持久化 |
 | `src/` | 无框架的响应式界面与独立 SSE 解析器 |
+| `src/stream-renderer.js` | 每帧合并流式片段、终止清理与最终文本收束 |
 | `src/affect.js` | 助手情感面板、开关与重置交互 |
 | `tests/` | 核心、HTTP 与浏览器回归用例 |
 | `docs/REVIEW.md` | 代码审阅、修改范围与尚未实现的研究能力 |
@@ -309,6 +314,7 @@ API 联调用本机模拟服务验证模型名称、地址、认证、上下文�
 | `docs/ADVANCED_WORKFLOW.md` | 行动实验、合并意图分析、会话节奏与语料维护 |
 | `docs/ASSISTANT_AFFECT.md` | 情感状态机制、用户控制、接口与研究边界 |
 | `docs/PYTHON_MIGRATION.md` | 本机性能样本、Python 迁移方案与收益边界 |
+| `docs/PERFORMANCE.md` | 全流程性能诊断、模块接入清单、SQLite 迁移与对照测量 |
 
 原 `lib/memory/` 的模拟向量、图检索和摘要管线已删除，替换为接入主流程的长期记忆模块。用户记忆采用有界的类别、词项、时效排序，并在本地 RAG 可用时加入语义评分；公开语料索引和情绪分类器位于 `ml/`。两者分开，个人聊天不会自动成为训练语料。原项目说明保存在 [原始 README](docs/ORIGINAL_README.md)，其中的设想不代表当前实现。
 

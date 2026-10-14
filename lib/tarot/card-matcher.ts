@@ -17,6 +17,7 @@ import {
 // ==================== 情绪-牌面匹配器 ====================
 
 export class EmotionCardMatcher {
+  constructor(private random: () => number = Math.random) {}
   /**
    * 基于当前情绪状态匹配最相关的牌
    */
@@ -37,7 +38,7 @@ export class EmotionCardMatcher {
         return this.selectByIntensity(directMatch, intensity, 'low');
       }
       // 中等强度：随机选择
-      return directMatch[Math.floor(Math.random() * directMatch.length)];
+      return directMatch[Math.floor(this.random() * directMatch.length)];
     }
 
     // 2. 模糊匹配
@@ -102,7 +103,7 @@ export class EmotionCardMatcher {
       if (key === emotion || synonyms.includes(emotion)) {
         const cards = EMOTION_CARD_MAP[key];
         if (cards && cards.length > 0) {
-          return cards[Math.floor(Math.random() * cards.length)];
+          return cards[Math.floor(this.random() * cards.length)];
         }
       }
     }
@@ -115,7 +116,7 @@ export class EmotionCardMatcher {
    */
   private matchByEmotionVector(emotion: string, intensity: number): CardId {
     // 简单的向量匹配：根据情绪的效价和唤醒度
-    // 实际应用中应使用 bge-m3 计算语义相似度
+    // Fixed descriptive coordinates for reflection prompts, not a trained semantic classifier.
     const emotionVectors: Record<string, { valence: number; arousal: number }> = {
       '焦虑': { valence: -0.5, arousal: 0.7 },
       '困惑': { valence: -0.3, arousal: 0.5 },
@@ -159,7 +160,7 @@ export class EmotionCardMatcher {
    * 获取随机牌
    */
   private getRandomCard(): CardId {
-    const index = Math.floor(Math.random() * MAJOR_ARCANA.length);
+    const index = Math.floor(this.random() * MAJOR_ARCANA.length);
     return MAJOR_ARCANA[index].id;
   }
 }
@@ -189,6 +190,7 @@ export class ThemeCardMatcher {
       // 计算重叠
       let overlap = 0;
       for (const tag of allTags) {
+        if (THEME_CARD_MAP[tag]?.includes(card.id)) overlap += 2;
         if (cardThemes.includes(tag) || cardKeywords.includes(tag)) {
           overlap++;
         }
@@ -236,8 +238,8 @@ export class CardSelector {
   private emotionMatcher: EmotionCardMatcher;
   private themeMatcher: ThemeCardMatcher;
 
-  constructor() {
-    this.emotionMatcher = new EmotionCardMatcher();
+  constructor(private random: () => number = Math.random) {
+    this.emotionMatcher = new EmotionCardMatcher(random);
     this.themeMatcher = new ThemeCardMatcher();
   }
 
@@ -281,7 +283,7 @@ export class CardSelector {
       getCardById(randomCard)!,
     ];
 
-    // 打乱顺序（用户不知道哪张是精心选的，哪张是随机的）
+    // Shuffle candidates; the single-card UI draws one from this balanced pool.
     this.shuffleArray(selected);
 
     return {
@@ -299,7 +301,7 @@ export class CardSelector {
    */
   private getRandomExcluding(exclude: CardId[]): CardId {
     const available = MAJOR_ARCANA.filter(card => !exclude.includes(card.id));
-    const index = Math.floor(Math.random() * available.length);
+    const index = Math.floor(this.random() * available.length);
     return available[index].id;
   }
 
@@ -308,7 +310,7 @@ export class CardSelector {
    */
   private shuffleArray<T>(array: T[]): void {
     for (let i = array.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(this.random() * (i + 1));
       [array[i], array[j]] = [array[j], array[i]];
     }
   }
@@ -319,8 +321,8 @@ export class CardSelector {
 export class CardMatcher {
   private selector: CardSelector;
 
-  constructor() {
-    this.selector = new CardSelector();
+  constructor(random: () => number = Math.random) {
+    this.selector = new CardSelector(random);
   }
 
   /**

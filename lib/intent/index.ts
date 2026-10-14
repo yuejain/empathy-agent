@@ -21,4 +21,5 @@ export * from './types';
 export { IntentClassifier } from './classifier';
 
 // 路由决策引擎
-export { IntentRouter, MetaFeedbackAccumulator } from './router';
+export { IntentRouter, MetaFeedbackAccumulator, routeSubState } from './router';
+export { SUB_INTENTS, compatibleSubIntent, recognizeSubIntent } from './sub-intent';

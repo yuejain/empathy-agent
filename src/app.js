@@ -27,14 +27,15 @@ function setBusy(busy) {
   document.querySelectorAll('[data-prompt]').forEach(b => b.disabled = !ready || busy);
   $('stopButton').hidden = !busy; $('pending').hidden = !busy;
 }
-function scrollBottom() { $('chatScroll').scrollTop = $('chatScroll').scrollHeight; }
-function addMessage(role, content, meta = '') {
+function nearBottom() { const scroll = $('chatScroll'); return scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop < 80; }
+function scrollBottom() { const scroll = $('chatScroll'); scroll.scrollTo({ top: scroll.scrollHeight, behavior: 'instant' }); }
+function addMessage(role, content, meta = '', autoScroll = true) {
   $('welcome').hidden = true;
   const row = document.createElement('div'); row.className = 'message ' + role;
   if (role === 'assistant') { const avatar = document.createElement('span'); avatar.className = 'avatar'; avatar.textContent = '◒'; avatar.setAttribute('aria-hidden', 'true'); row.appendChild(avatar); }
   const text = document.createElement('div'); text.className = 'message-content'; text.textContent = content;
   if (meta) { const note = document.createElement('div'); note.className = 'message-meta'; note.textContent = meta; text.appendChild(note); }
-  row.appendChild(text); $('messages').appendChild(row); scrollBottom(); return row;
+  row.appendChild(text); $('messages').appendChild(row); if (autoScroll) scrollBottom(); return row;
 }
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: headers() });
@@ -48,7 +49,8 @@ async function loadSession() {
   const data = await (await api('/api/session')).json();
   history = data.history;
   $('messages').replaceChildren(); $('welcome').hidden = history.length > 0;
-  history.forEach(t => addMessage(t.role, t.content));
+  history.forEach(t => addMessage(t.role, t.content, '', false));
+  scrollBottom();
   $('turnCount').textContent = data.turnCount;
   $('phase').textContent = phaseNames[data.state] || data.state;
   $('memoryCount').textContent = data.memories.length;
@@ -82,7 +84,10 @@ async function sendMessage() {
   if (message.length > 2000) { showError('消息不能超过 2000 个字符。'); return; }
   showError(''); controller = new AbortController(); setBusy(true);
   const sentRow = addMessage('user', message); $('userInput').value = '';
-  let received = false, finished = false, partialRow = null, partialText = '';
+  let received = false, finished = false, partialRow = null, streamRenderer = null;
+  const signal = controller.signal;
+  const cancelRender = () => streamRenderer?.cancel();
+  signal.addEventListener('abort', cancelRender, { once: true });
   try {
     const response = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message }), signal: controller.signal });
     if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) throw new Error('服务没有返回有效的消息流。');
@@ -92,17 +97,28 @@ async function sendMessage() {
       const data = JSON.parse(event.data);
       if (event.event === 'ping' || data.type === 'ping') return;
       if (data.type === 'error_message') throw new Error(data.content || '生成失败，请重试。');
-      if (data.type === 'ai_delta' && typeof data.content === 'string') {
-        if (!partialRow) partialRow = addMessage('assistant', '');
-        partialText += data.content;
-        partialRow.querySelector('.message-content').textContent = partialText;
-        $('pending').textContent = '◒ 正在回复…'; scrollBottom();
+      if (!received && data.type === 'ai_delta' && typeof data.content === 'string' && data.content) {
+        if (!streamRenderer) {
+          const text = document.createTextNode('');
+          const ensureRow = () => {
+            if (partialRow) return;
+            partialRow = addMessage('assistant', '', '', false);
+            partialRow.querySelector('.message-content').appendChild(text);
+          };
+          streamRenderer = createStreamRenderer({
+            appendText(chunk) { const follow = nearBottom(); ensureRow(); text.appendData(chunk); if (follow) scrollBottom(); },
+            replaceText(content) { ensureRow(); text.data = content; },
+          });
+          $('pending').textContent = '◒ 正在回复…';
+        }
+        streamRenderer.append(data.content);
       }
-      if (data.type === 'ai_response' && typeof data.content === 'string') {
+      if (!received && data.type === 'ai_response' && typeof data.content === 'string') {
+        const follow = nearBottom();
         received = true;
-        if (partialRow) partialRow.querySelector('.message-content').textContent = data.content;
-        else addMessage('assistant', data.content, data.mode === 'demo' ? '本地演示回复' : '');
-        const row = partialRow || $('messages').lastElementChild;
+        streamRenderer?.finish(data.content);
+        if (!partialRow) partialRow = addMessage('assistant', data.content, data.mode === 'demo' ? '本地演示回复' : '', false);
+        const row = partialRow;
         renderReflection(data.reflection);
         renderSessionHealth(data.health);
         renderAffect(data.assistantAffect);
@@ -138,6 +154,7 @@ async function sendMessage() {
           note.textContent = `长期记忆：${data.memory.memoriesUpdated || 0} 次更新 · 本轮参考 ${data.memory.memoriesUsed || 0} 条`;
           row.querySelector('.message-content').appendChild(note);
         }
+        if (follow) scrollBottom();
       }
     });
     try {
@@ -153,13 +170,15 @@ async function sendMessage() {
     $('memoryCount').textContent = saved.memories.length;
     history = saved.history;
   } catch (error) {
+    cancelRender();
     const stopped = controller?.signal.aborted;
     if (!received) {
       sentRow.remove(); $('userInput').value = message; $('welcome').hidden = history.length > 0;
       partialRow?.remove();
     }
-    showError(stopped ? '已停止回复。' : error.message || '网络连接失败，请重试。');
+    showError(stopped ? received ? '回复已完成，已停止等待后续状态。' : '已停止回复。' : error.message || '网络连接失败，请重试。');
   } finally {
+    cancelRender(); signal.removeEventListener('abort', cancelRender);
     // Wait for the stop endpoint before allowing a new request to the same session.
     if (pendingStop) await pendingStop;
     pendingStop = null; controller = null; setBusy(false); $('userInput').focus();

@@ -1,7 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ChatGateway, GatewayError, Environment } from '../lib/gateway';
 import { ConversationOrchestrator } from '../lib/orchestrator';
@@ -22,13 +22,16 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
   const knowledge = new LocalKnowledge(env);
   const safeEnv = Object.fromEntries(Object.entries(env).filter((e): e is [string, string] => typeof e[1] === 'string'));
   const orchestrator = new ConversationOrchestrator(safeEnv);
-  const store = storeOverride || new SessionStore(env.SESSION_PERSISTENCE === 'false' ? undefined : resolve(env.DATA_DIR || resolve(ROOT, '.data'), 'sessions.json'));
+  if (env.SESSION_STORAGE && !['json', 'sqlite'].includes(env.SESSION_STORAGE)) throw new Error('SESSION_STORAGE 必须为 json 或 sqlite。');
+  const localPython = resolve(ROOT, process.platform === 'win32' ? '.venv-ml/Scripts/python.exe' : '.venv-ml/bin/python');
   const active = new Map<string, AbortController>();
+  const editing = new Set<string>();
   const rate = new Map<string, { count: number; until: number }>();
   const assets = new Map([
     ['/', { content: readFileSync(resolve(ROOT, 'dist/public/index.html')), type: 'text/html; charset=utf-8' }],
     ['/app.js', { content: readFileSync(resolve(ROOT, 'dist/public/app.js')), type: 'text/javascript; charset=utf-8' }],
     ['/sse.js', { content: readFileSync(resolve(ROOT, 'dist/public/sse.js')), type: 'text/javascript; charset=utf-8' }],
+    ['/stream-renderer.js', { content: readFileSync(resolve(ROOT, 'dist/public/stream-renderer.js')), type: 'text/javascript; charset=utf-8' }],
     ['/continuity.js', { content: readFileSync(resolve(ROOT, 'dist/public/continuity.js')), type: 'text/javascript; charset=utf-8' }],
     ['/corpus.js', { content: readFileSync(resolve(ROOT, 'dist/public/corpus.js')), type: 'text/javascript; charset=utf-8' }],
     ['/experiments.js', { content: readFileSync(resolve(ROOT, 'dist/public/experiments.js')), type: 'text/javascript; charset=utf-8' }],
@@ -36,6 +39,9 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
     ['/affect.js', { content: readFileSync(resolve(ROOT, 'dist/public/affect.js')), type: 'text/javascript; charset=utf-8' }],
     ['/styles.css', { content: readFileSync(resolve(ROOT, 'dist/public/styles.css')), type: 'text/css; charset=utf-8' }],
   ]);
+  const etags = new Map([...assets].map(([path, asset]) => [path, '"' + createHash('sha256').update(asset.content).digest('hex').slice(0, 24) + '"']));
+  const store = storeOverride || new SessionStore(env.SESSION_PERSISTENCE === 'false' ? undefined : resolve(env.DATA_DIR || resolve(ROOT, '.data'), 'sessions.json'), undefined, undefined,
+    { backend: env.SESSION_STORAGE === 'sqlite' ? 'sqlite' : 'json', pythonExecutable: env.PYTHON_EXECUTABLE || (existsSync(localPython) ? localPython : 'python') });
   const server = createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -48,12 +54,17 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
       const url = new URL(req.url || '/', origin);
       const asset = assets.get(url.pathname);
       if (asset && (req.method === 'GET' || req.method === 'HEAD')) {
-        res.setHeader('Content-Type', asset.type); res.end(req.method === 'HEAD' ? undefined : asset.content); return;
+        const etag = etags.get(url.pathname)!;
+        res.setHeader('Cache-Control', 'private, no-cache'); res.setHeader('ETag', etag);
+        if (req.headers['if-none-match']?.split(',').some(tag => tag.trim().replace(/^W\//, '') === etag || tag.trim() === '*')) { res.writeHead(304); res.end(); return; }
+        res.setHeader('Content-Type', asset.type); res.setHeader('Content-Length', asset.content.length);
+        res.end(req.method === 'HEAD' ? undefined : asset.content); return;
       }
       if (url.pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
+      await store.ready;
       if (url.pathname === '/api/health' && req.method === 'GET') {
         json(res, 200, { ok: true, mode: gateway.mode, model: gateway.mode === 'live' ? gateway.model : null,
-          persistence: env.SESSION_PERSISTENCE !== 'false', maxMessageLength: 2000, local: await knowledge.health() }); return;
+          persistence: store.backend !== 'memory', storage: store.backend, maxMessageLength: 2000, local: await knowledge.health() }); return;
       }
       if (!['/api/session', '/api/session/health', '/api/chat', '/empathy-agent', '/api/stop', '/api/memories','/api/corpus'].includes(url.pathname)) throw new HttpError(404, '接口不存在。');
       const cookie = req.headers.cookie?.split(';').map(x => x.trim()).find(x => x.startsWith('empathy-owner='))?.slice('empathy-owner='.length);
@@ -62,7 +73,12 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
       const sessionId = req.headers['makers-conversation-id'];
       if (typeof sessionId !== 'string' || !ID.test(sessionId)) throw new HttpError(400, '会话编号无效，请刷新页面。');
       const key = `${owner}:${sessionId}`;
-      const ownerBusy = () => [...active.keys()].some(k => k.startsWith(owner + ':'));
+      const ownerBusy = () => editing.has(owner) || [...active.keys()].some(k => k.startsWith(owner + ':'));
+      const ownerWrite = async (write: () => Promise<void>) => {
+        if (ownerBusy()) throw new HttpError(409, '请等待当前操作完成，再修改记录。');
+        editing.add(owner);
+        try { await write(); } finally { editing.delete(owner); }
+      };
       if(url.pathname==='/api/session/health') {
         if(req.method!=='GET')throw new HttpError(405,'请求方法不支持。');
         json(res,200,orchestrator.checkSessionHealth(key,store.get(owner,sessionId)));return;
@@ -89,7 +105,7 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
         if (ownerBusy()) throw new HttpError(409, '请先停止当前回复，再修改长期记忆。');
         const before = store.getMemory(owner);
         const updated = mutateMemory(before, body, { sessionId: key, turnId: 'manual', now: Date.now() });
-        store.setMemory(owner, updated, before.revision);
+        await ownerWrite(() => store.setMemory(owner, updated, before.revision));
         json(res, 200, memoryView(updated, Date.now())); return;
       }
       if (url.pathname === '/api/session') {
@@ -103,7 +119,7 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
           const now=new Date().toISOString();state.lastActiveAt=now;
           if(body.action==='continue'){state.healthCheckpoint={at:now,turnCount:state.turnCount};if(state.currentState==='SESSION_CLOSE')state.currentState='EMPATHY_PHASE';}
           else {state.currentState='SESSION_CLOSE';state.currentSubState=undefined;}
-          store.set(owner,sessionId,state);json(res,200,{health:orchestrator.checkSessionHealth(key,state)});return;
+          await ownerWrite(() => store.set(owner,sessionId,state));json(res,200,{health:orchestrator.checkSessionHealth(key,state)});return;
         }
         if (req.method === 'GET') {
           const state = store.get(owner, sessionId);
@@ -111,8 +127,7 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
           json(res, 200, { history: state?.recentHistory || [], turnCount: state?.turnCount || 0, state: state?.currentState || 'INIT', memories: memory.entries.filter(e => eligible(e, Date.now())).map(e => e.text), memory: memoryView(memory, Date.now()),reflection:validReflection(state?.reflection,memory.contextEpoch),opening:continuityOpening(memory),health:orchestrator.checkSessionHealth(key,state) }); return;
         }
         if (req.method === 'DELETE') {
-          if (active.has(key)) throw new HttpError(409, '请先停止当前回复，再清除记录。');
-          store.delete(owner, sessionId); orchestrator.clearSession(key);
+          await ownerWrite(() => store.delete(owner, sessionId)); orchestrator.clearSession(key);
           json(res, 200, { ok: true }); return;
         }
         throw new HttpError(405, '请求方法不支持。');
@@ -150,7 +165,9 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
           },
         });
         controller.signal.throwIfAborted();
-        store.set(owner, sessionId, result.updatedState, result.updatedMemory, memory.revision);
+        const commitStarted = performance.now();
+        await store.set(owner, sessionId, result.updatedState, result.updatedMemory, memory.revision, controller.signal);
+        if (result.metadata.timings) result.metadata.timings.persistenceMs = Math.round(performance.now() - commitStarted);
         res.write(sseEvent(responseEvent(result), 'ai_response'));
       } catch (error) {
         if (!res.destroyed && !controller.signal.aborted) res.write(sseEvent({ type: 'error_message', code: error instanceof GatewayError ? error.code : 'INTERNAL', content: error instanceof GatewayError ? error.message : '处理或保存失败，请重试。' }, 'error_message'));
@@ -166,8 +183,11 @@ export function createApp(env: Environment = process.env, storeOverride?: Sessio
   });
   server.requestTimeout = 15000;
   server.headersTimeout = 10000;
-  server.on('close', () => { for (const controller of active.values()) controller.abort(); });
-  return server;
+  server.on('close', () => {
+    for (const controller of active.values()) controller.abort();
+    void store.close().catch(() => console.error('本地存储关闭失败，请检查服务状态。'));
+  });
+  return Object.assign(server, { storageReady: store.ready, closeStorage: () => store.close() });
 }
 
 function json(res: ServerResponse, status: number, value: unknown) {
@@ -202,8 +222,18 @@ if (require.main === module) {
     const port = Number(process.env.PORT || 3000);
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT 必须是 1 到 65535 的整数。');
     const app = createApp();
-    app.on('error', (error: NodeJS.ErrnoException) => { console.error(error.code === 'EADDRINUSE' ? `端口 ${port} 已被占用，请在 .env 修改 PORT。` : '本地服务启动失败。'); process.exitCode = 1; });
-    app.listen(port, '127.0.0.1', () => console.log(`Empathy Agent: http://127.0.0.1:${port} (${new ChatGateway(process.env).mode})`));
-    for (const event of ['SIGINT', 'SIGTERM'] as const) process.on(event, () => { app.close(); app.closeAllConnections(); });
+    let stopping = false;
+    const shutdown = () => {
+      if (stopping) return;
+      stopping = true; app.close(); app.closeAllConnections();
+      void app.closeStorage().catch(() => { process.exitCode = 1; });
+    };
+    app.on('error', (error: NodeJS.ErrnoException) => {
+      console.error(error.code === 'EADDRINUSE' ? `端口 ${port} 已被占用，请在 .env 修改 PORT。` : '本地服务启动失败。');
+      process.exitCode = 1; shutdown();
+    });
+    void app.storageReady.then(() => { if (!stopping) app.listen(port, '127.0.0.1', () => console.log(`Empathy Agent: http://127.0.0.1:${port} (${new ChatGateway(process.env).mode})`)); })
+      .catch(() => { console.error('本地存储初始化失败，请检查 SESSION_STORAGE、PYTHON_EXECUTABLE 和数据目录。'); process.exitCode = 1; shutdown(); });
+    for (const event of ['SIGINT', 'SIGTERM'] as const) process.on(event, shutdown);
   } catch (error) { console.error(error instanceof Error ? error.message : '启动失败'); process.exitCode = 1; }
 }
