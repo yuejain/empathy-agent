@@ -2,7 +2,7 @@
  * 塔罗破冰模块 - 替代入口系统
  *
  * 不是所有用户都接受塔罗，需要设计替代入口：
- * - 图片投射：用不含塔罗术语的抽象图片替代
+ * - 文字意象：用不含塔罗术语的文字画面替代
  * - 场景选择：描述3个生活场景，选最触动的
  * - 关键词选择：提供6个关键词，选1-3个
  * - 直接对话：跳过破冰工具，直接开放式提问
@@ -12,11 +12,11 @@ import { EntryType, AlternativeEntry, AlternativeItem } from './types';
 
 // ==================== 替代入口定义 ====================
 
-/** 图片投射入口 */
+/** Text-only imagery; no image upload or image generation is implied. */
 export const IMAGE_ENTRIES: AlternativeEntry = {
   type: 'image',
-  title: '看一张图片',
-  description: '用抽象图片触发联想和感受',
+  title: '意象联想（文字画面）',
+  description: '用文字描述的画面触发联想和感受',
   items: [
     {
       id: 'img_01',
@@ -220,13 +220,13 @@ export class EntrySelector {
    * 根据用户情绪推荐替代入口
    */
   recommendByEmotion(emotion: string): EntryType {
-    // 偏理性的用户可能更适合场景选择
+    // Optional prompt suggestion from the current emotion label, not a personality classification.
     const rationalEmotions = ['困惑', '焦虑', '纠结'];
     if (rationalEmotions.includes(emotion)) {
       return 'scenario';
     }
 
-    // 偏感性的用户可能更适合图片投射
+    // Offer a quieter text image for these labels.
     const emotionalEmotions = ['悲伤', '孤独', '麻木'];
     if (emotionalEmotions.includes(emotion)) {
       return 'image';
@@ -248,8 +248,8 @@ export class EntrySelector {
   generateAlternativeGreeting(type: EntryType): string {
     switch (type) {
       case 'image':
-        return `不想用牌的话，也可以看一张图片。
-下面几张图片里，哪一张让你有感觉？
+        return `不想用牌的话，也可以读一段文字画面。
+下面几个画面里，哪一个让你有感觉？
 选择之后，我们可以聊聊你看到它时想到了什么。`;
 
       case 'scenario':

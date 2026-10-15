@@ -206,15 +206,6 @@ export interface MetaFeedbackRecord {
   stateAtTime: string;
 }
 
-/** 反馈模式分析结果 */
-export interface FeedbackPattern {
-  pattern: string;
-  action: string;
-  message?: string;
-  preference?: string;
-  hint?: string;
-}
-
 // ==================== 模块配置 ====================
 
 /** 意图识别配置 */

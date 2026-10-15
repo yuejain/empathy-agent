@@ -23,153 +23,8 @@ import { requestedGame } from '../tarot/reflection-games';
 // ==================== 状态转换规则定义 ====================
 
 /** 状态转换规则表 */
-const TRANSITION_RULES: Record<GlobalState, TransitionRule[]> = {
-  INIT: [
-    {
-      targetState: 'SAFETY_SCREEN',
-      conditions: [],
-      basePriority: 1.0,
-      allowsProgression: true,
-      isRetreat: false,
-      respectsUserPace: false,
-      requiresEmotionLow: false,
-      requiresEmotionDeclining: false,
-      reason: '会话初始化完成，进入安全筛查',
-    },
-  ],
-
-  SAFETY_SCREEN: [
-    {
-      targetState: 'ENTRY_SELECT',
-      conditions: [
-        { type: 'safety', operator: 'in', value: ['low', 'medium'], description: '风险等级为低或中' },
-      ],
-      basePriority: 0.9,
-      allowsProgression: true,
-      isRetreat: false,
-      respectsUserPace: false,
-      requiresEmotionLow: false,
-      requiresEmotionDeclining: false,
-      reason: '安全筛查通过',
-    },
-    {
-      targetState: 'SAFETY_PROTOCOL',
-      conditions: [
-        { type: 'safety', operator: 'eq', value: 'high', description: '风险等级为高' },
-      ],
-      basePriority: 1.0,
-      allowsProgression: false,
-      isRetreat: false,
-      respectsUserPace: false,
-      requiresEmotionLow: false,
-      requiresEmotionDeclining: false,
-      reason: '检测到高风险信号',
-    },
-  ],
-
-  ENTRY_SELECT: [
-    {
-      targetState: 'TAROT_ENTRY',
-      conditions: [
-        { type: 'user_signal', operator: 'eq', value: 'agrees_tarot', description: '用户同意塔罗入口' },
-      ],
-      basePriority: 0.8,
-      allowsProgression: true,
-      isRetreat: false,
-      respectsUserPace: true,
-      requiresEmotionLow: false,
-      requiresEmotionDeclining: false,
-      reason: '用户同意塔罗入口',
-    },
-    {
-      targetState: 'IMAGE_ENTRY',
-      conditions: [
-        { type: 'user_signal', operator: 'eq', value: 'agrees_image', description: '用户同意图片入口' },
-      ],
-      basePriority: 0.75,
-      allowsProgression: true,
-      isRetreat: false,
-      respectsUserPace: true,
-      requiresEmotionLow: false,
-      requiresEmotionDeclining: false,
-      reason: '用户同意图片入口',
-    },
-    {
-      targetState: 'DIRECT_ENTRY',
-      conditions: [
-        { type: 'user_signal', operator: 'eq', value: 'declines_all_tools', description: '用户拒绝所有工具' },
-      ],
-      basePriority: 0.7,
-      allowsProgression: true,
-      isRetreat: false,
-      respectsUserPace: true,
-      requiresEmotionLow: false,
-      requiresEmotionDeclining: false,
-      reason: '用户拒绝所有工具入口',
-    },
-  ],
-
-  TAROT_ENTRY: [
-    {
-      targetState: 'EMPATHY_PHASE',
-      conditions: [
-        { type: 'user_signal', operator: 'eq', value: 'tarot_completed', description: '塔罗流程完成' },
-      ],
-      basePriority: 0.8,
-      allowsProgression: true,
-      isRetreat: false,
-      respectsUserPace: true,
-      requiresEmotionLow: false,
-      requiresEmotionDeclining: false,
-      reason: '塔罗破冰完成，进入共情阶段',
-    },
-    {
-      targetState: 'ENTRY_SELECT',
-      conditions: [
-        { type: 'user_signal', operator: 'eq', value: 'tarot_miss', description: '用户对塔罗无反应' },
-      ],
-      basePriority: 0.6,
-      allowsProgression: false,
-      isRetreat: true,
-      respectsUserPace: true,
-      requiresEmotionLow: false,
-      requiresEmotionDeclining: false,
-      reason: '用户对塔罗无反应，退回入口选择',
-    },
-  ],
-
-  IMAGE_ENTRY: [
-    {
-      targetState: 'EMPATHY_PHASE',
-      conditions: [
-        { type: 'user_signal', operator: 'eq', value: 'image_completed', description: '图片投射完成' },
-      ],
-      basePriority: 0.8,
-      allowsProgression: true,
-      isRetreat: false,
-      respectsUserPace: true,
-      requiresEmotionLow: false,
-      requiresEmotionDeclining: false,
-      reason: '图片投射完成，进入共情阶段',
-    },
-  ],
-
-  DIRECT_ENTRY: [
-    {
-      targetState: 'EMPATHY_PHASE',
-      conditions: [
-        { type: 'user_signal', operator: 'eq', value: 'user_expressed', description: '用户表达了内容' },
-      ],
-      basePriority: 0.8,
-      allowsProgression: true,
-      isRetreat: false,
-      respectsUserPace: true,
-      requiresEmotionLow: false,
-      requiresEmotionDeclining: false,
-      reason: '用户已表达，进入共情阶段',
-    },
-  ],
-
+// Entry, game and safety phases are normalized by the explicit branch in evaluateTransition.
+const TRANSITION_RULES: Partial<Record<GlobalState, TransitionRule[]>> = {
   EMPATHY_PHASE: [
     {
       targetState: 'EXPLORE_PHASE',
@@ -326,23 +181,7 @@ const TRANSITION_RULES: Record<GlobalState, TransitionRule[]> = {
     },
   ],
 
-  SESSION_CLOSE: [],
 
-  SAFETY_PROTOCOL: [
-    {
-      targetState: 'SESSION_CLOSE',
-      conditions: [
-        { type: 'user_signal', operator: 'eq', value: 'safety_resolved', description: '安全事件处理完成' },
-      ],
-      basePriority: 0.9,
-      allowsProgression: true,
-      isRetreat: false,
-      respectsUserPace: false,
-      requiresEmotionLow: false,
-      requiresEmotionDeclining: false,
-      reason: '安全事件处理完成',
-    },
-  ],
 };
 
 // ==================== 状态约束定义 ====================
@@ -596,15 +435,11 @@ export class ConversationStateMachine {
       case 'eq':
         if (value === 'wants_to_progress') return this.detectUserProgressSignal(userInput);
         if (value === 'wants_to_retreat') return this.detectUserRetreatSignal(userInput);
-        if (value === 'user_expressed') return userInput.length > 5;
         const patterns: Record<string, RegExp> = {
-          agrees_tarot: /塔罗|抽牌/, agrees_image: /图片|看图/,
-          declines_all_tools: /直接聊|不用|不要/, tarot_completed: /[ABCＡＢＣ]|像|想到|跳过/,
-          tarot_miss: /不像|跳过/, image_completed: /看到|想到|跳过/,
           accepts_action: /试试|愿意|行动|怎么做|下一步/,
           action_completed: /做了|完成|试过|尝试了/, wants_new_direction: /换个|换一|换方向/,
           action_confirmed: /先这样|下次聊/, review_completed: /总结完|先聊到这/,
-          wants_new_exploration: /再聊|另一|继续探索/, safety_resolved: /现在安全|有人陪/,
+          wants_new_exploration: /再聊|另一|继续探索/,
         };
         if (patterns[value]) return patterns[value].test(userInput);
         return false;

@@ -44,7 +44,7 @@ test('cross-session affect survives restart, stays owner-scoped and retains no r
  const dir=mkdtempSync(join(tmpdir(),'affect-test-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));const file=join(dir,'store.json');
  let store=new SessionStore(file);const o=new ConversationOrchestrator({APP_MODE:'demo'});
  const one=await o.processTurn({userId:'owner',sessionId:'owner:first',userInput:'我完成了演讲',memoryProfile:store.getMemory('owner')});
- store.set('owner','first',one.updatedState,one.updatedMemory,0);store=new SessionStore(file);
+ await store.set('owner','first',one.updatedState,one.updatedMemory,0);store=new SessionStore(file);
  const two=await o.processTurn({userId:'owner',sessionId:'owner:second',userInput:'我发现我可以更从容',memoryProfile:store.getMemory('owner')});
  assert.equal(two.metadata.assistantAffect.turns,2);assert.equal(affectView(store.getMemory('stranger')).turns,0);
  assert.doesNotMatch(JSON.stringify(two.updatedMemory.affect),/演讲|从容|quote|sessionId/);

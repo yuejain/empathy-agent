@@ -28,6 +28,11 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(self.request('/analyze',{'text':'work stress'})[0],200)
         self.assertEqual(self.request('/v1/chat/completions',{'messages':[]})[0],410)
         self.assertFalse(hasattr(serve.Engine,'load_generator'))
+    def test_saturated_analysis_returns_retryable_unavailable_without_private_data(self):
+        with patch.object(self.fixture,'analyze',side_effect=serve.AnalysisBusy('private fixture')):
+            status,data=self.request('/analyze',{'text':'work stress'})
+            self.assertEqual(status,503)
+            self.assertEqual(data,{'error':'Local analysis unavailable'})
     def test_validation_and_cross_origin_requests(self):
         for body in [None,[],{}, {'text':2},{'text':'x'*4001}]:
             if body is not None:self.assertEqual(self.request('/analyze',body)[0],400)

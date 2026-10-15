@@ -10,6 +10,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - run: npm run security:check
       - run: npm test
       - run: npx playwright install --with-deps chromium

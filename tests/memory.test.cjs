@@ -125,15 +125,15 @@ test('v1 migration quarantines legacy memories once, preserves original backup a
   const store = new SessionStore(file), p = store.getMemory('u');
   assert.equal(p.entries[0].status,'pending'); assert.equal(retrieveMemories(p,'我叫什么',now).length,0);
   assert.equal(readFileSync(file+'.v1.bak','utf8'),original); assert.equal(store.get('u','s').explicitMemories,undefined);
-  store.setMemory('u',mutate(p,{action:'clear'}),p.revision);
+  await store.setMemory('u',mutate(p,{action:'clear'}),p.revision);
   assert.equal(new SessionStore(file).getMemory('u').entries.length,0); assert.equal(readFileSync(file+'.v1.bak','utf8'),original);
 });
 test('corrupt profile snapshots fail closed and disk errors roll back both conversation and memory', async t => {
   const file = tempFile(t), store = new SessionStore(file), o = new ConversationOrchestrator({APP_MODE:'demo'});
   const first = await o.processTurn({userId:'u',sessionId:'u:s',userInput:'我叫小林'});
-  store.set('u','s',first.updatedState,first.updatedMemory,0);
+  await store.set('u','s',first.updatedState,first.updatedMemory,0);
   const snapshot = readFileSync(file,'utf8'), second = await o.processTurn({userId:'u',sessionId:'u:s',userInput:'我现在很开心'});
-  mkdirSync(file+'.tmp'); assert.throws(()=>store.set('u','s',second.updatedState,second.updatedMemory,first.updatedMemory.revision));
+  mkdirSync(file+'.tmp'); await assert.rejects(store.set('u','s',second.updatedState,second.updatedMemory,first.updatedMemory.revision));
   assert.equal(store.get('u','s').turnCount,1); assert.equal(store.getMemory('u').entries.length,1); assert.equal(readFileSync(file,'utf8'),snapshot);
   const invalid = JSON.parse(snapshot); invalid.profiles[0].settings.capture='invalid'; writeFileSync(file,JSON.stringify(invalid));
   assert.throws(()=>new SessionStore(file),/原文件未覆盖/); assert.equal(JSON.parse(readFileSync(file,'utf8')).profiles[0].settings.capture,'invalid');

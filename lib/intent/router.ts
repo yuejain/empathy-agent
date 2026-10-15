@@ -8,11 +8,19 @@
 import {
   IntentRecognitionResult, RouteDecision, RouteTarget,
   RoutePriority, RouteStrategy, StateMachineHints,
-  InteractionIntent, MetaFeedbackRecord, FeedbackPattern,
+  InteractionIntent, MetaFeedbackRecord,
   SubIntent,
 } from './types';
 import { MemoryRecord } from '../memory/schema';
 import { eligible } from '../memory/policy';
+import { compatibleSubIntent } from './sub-intent';
+import type { GlobalState, SubState } from '../orchestrator/types';
+
+/** A routing hint cannot override the final safety/pacing phase chosen by the orchestrator. */
+export function routeSubState(route: RouteDecision, phase: GlobalState): SubState | undefined {
+  const prefix = ({ EXPLORE_PHASE:'EXPLORE_', ACTION_PHASE:'ACTION_', REVIEW_PHASE:'REVIEW_', EMPATHY_PHASE:'EMPATHY_' } as Partial<Record<GlobalState,string>>)[phase];
+  return prefix && route.subState?.startsWith(prefix) ? route.subState as SubState : undefined;
+}
 
 export function communicationGuidance(entries: MemoryRecord[], input: string) {
   const preferences = entries.filter(e => eligible(e,Date.now()) && e.key.startsWith('profile:communication:')).sort((a,b) => a.updatedAt-b.updatedAt);
@@ -158,7 +166,7 @@ const SUB_INTENT_ROUTES: Record<string, string> = {
   'L2.2d_direction_finding': 'EXPLORE_HYPOTHESIZE',
 
   // L2.3 子意图
-  'L2.3a_decision_agonizing': 'EXPLORE_DESIGN',
+  'L2.3a_decision_agonizing': 'ACTION_PLAN',
   'L2.3b_action_planning': 'ACTION_PLAN',
   'L2.3c_result_sharing': 'ACTION_RESULT',
   'L2.3d_action_blocked': 'ACTION_EXPLORE_BLOCK',
@@ -182,6 +190,27 @@ const SUB_INTENT_ROUTES: Record<string, string> = {
   'L2.8d_anthropomorphism': 'honest_about_ai_nature',
 };
 
+const SUB_INTENT_GUIDANCE: Partial<Record<SubIntent, string>> = {
+  'L2.1c_seeking_normalize':'承认这种感受可以被讨论，不作正常或异常的诊断',
+  'L2.2a_value_sorting':'帮助梳理用户亲自表达的在意之处，不替用户确定价值观',
+  'L2.2b_conflict_clarification':'同时呈现两边的需要和现实限制',
+  'L2.2c_cause_seeking':'把可能原因保留为待核对的解释',
+  'L2.2d_direction_finding':'从用户自己的偏好梳理可能方向',
+  'L2.3a_decision_agonizing':'澄清选项与取舍，不代替用户决定',
+  'L2.3b_action_planning':'支持具体、可撤回的小步计划',
+  'L2.3c_result_sharing':'先听实际结果，再区分结果与解释',
+  'L2.3d_action_blocked':'先理解具体阻碍，不重复催促执行',
+  'L2.5d_decision_replace':'可以比较选项，但决定权留给用户',
+  'L2.6a_ai_identity':'如实说明这是 AI 助手',
+  'L2.6c_privacy':'如实说明本机未加密存储和配置的云端数据流，不作绝对保密承诺',
+  'L2.6d_methodology':'区分规则、模型估计和真实证据，不把游戏当预测',
+  'L2.7a_negative_feedback':'承认反馈并改变回应方式，不推测用户在回避什么',
+  'L2.7c_style_adjustment':'落实用户明确要求的表达方式',
+  'L2.7d_topic_switch':'停止旧话题，尊重用户选择的新话题',
+  'L2.8b_boundary_confirm':'说明服务的数据边界，不承诺现实中无法保证的保密',
+  'L2.8d_anthropomorphism':'区分可调节的情感模拟与尚未证实的主观感受',
+};
+
 // ==================== 元对话反馈累积器 ====================
 
 export class MetaFeedbackAccumulator {
@@ -190,7 +219,7 @@ export class MetaFeedbackAccumulator {
   /**
    * 添加反馈记录
    */
-  addFeedback(type: MetaFeedbackRecord['type'], details: Record<string, unknown>, currentState: string): FeedbackPattern {
+  addFeedback(type: MetaFeedbackRecord['type'], details: Record<string, unknown>, currentState: string): void {
     this.feedbackHistory.push({
       type,
       details,
@@ -199,49 +228,6 @@ export class MetaFeedbackAccumulator {
     });
     this.feedbackHistory = this.feedbackHistory.slice(-20);
 
-    return this.evaluatePattern();
-  }
-
-  /**
-   * 评估反馈模式
-   */
-  private evaluatePattern(): FeedbackPattern {
-    const recent = this.feedbackHistory.slice(-5);
-
-    // 模式 1: 连续负面反馈
-    const negativeCount = recent.filter(f => f.type === 'negative').length;
-    if (negativeCount >= 3) {
-      return {
-        pattern: 'persistent_dissatisfaction',
-        action: 'suggest_session_pause',
-        message: '你好像对我们的对话方式不太满意。要不要先停一下，或者告诉我你希望怎么聊？',
-      };
-    }
-
-    // 模式 2: 反复催促"直接一点"
-    const directCount = recent.filter(f =>
-      f.type === 'style_adjustment' &&
-      (f.details.request as string)?.includes('直接')
-    ).length;
-    if (directCount >= 2) {
-      return {
-        pattern: 'wants_directness',
-        action: 'permanently_adjust_style',
-        preference: 'direct',
-      };
-    }
-
-    // 模式 3: 反复切换话题
-    const switchCount = recent.filter(f => f.type === 'topic_switch').length;
-    if (switchCount >= 3) {
-      return {
-        pattern: 'topic_avoidance',
-        action: 'note_for_later',
-        hint: '用户可能在回避某些话题，但不急于指出',
-      };
-    }
-
-    return { pattern: 'no_pattern', action: 'continue' };
   }
 
   /**
@@ -319,12 +305,12 @@ export class IntentRouter {
 
     // 规则 2: 高强度情绪下的元对话负面反馈优先
     if (emotion.intensity > 0.7 && intentResult.primaryIntent === 'L2.7_meta_conversation') {
-      return { primaryIntent: 'L2.7_meta_conversation' };
+      return { primaryIntent: 'L2.7_meta_conversation', subIntent: compatibleSubIntent(intentResult.primaryIntent, intentResult.subIntent) };
     }
 
     // 规则 3: 信息查询优先（快速回答，然后回到原状态）
     if (intentResult.primaryIntent === 'L2.6_information_query') {
-      return { primaryIntent: 'L2.6_information_query' };
+      return { primaryIntent: 'L2.6_information_query', subIntent: compatibleSubIntent(intentResult.primaryIntent, intentResult.subIntent) };
     }
 
     // 规则 4: 使用状态上下文消歧
@@ -336,7 +322,7 @@ export class IntentRouter {
     // 规则 5: 默认使用主意图
     return {
       primaryIntent: intentResult.primaryIntent,
-      subIntent: intentResult.subIntent,
+      subIntent: compatibleSubIntent(intentResult.primaryIntent, intentResult.subIntent),
     };
   }
 
@@ -422,6 +408,7 @@ export class IntentRouter {
         break;
     }
 
+    if (intent.subIntent && SUB_INTENT_GUIDANCE[intent.subIntent]) hints.push(SUB_INTENT_GUIDANCE[intent.subIntent]!);
     return hints;
   }
 
