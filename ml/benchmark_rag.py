@@ -8,6 +8,7 @@ import json
 import statistics
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -79,15 +80,24 @@ def benchmark(samples, real):
         report['real']['pairedSearch'] = {'matching_results': True,
             'legacy': timed(lambda: legacy_search(engine.index, text, query_vector, detected), samples),
             'optimized': timed(lambda: engine.index.search(text, query_vector, detected), samples)}
-        memories = [{'id': str(uuid.UUID(int=i+1)), 'text': f'I decided to prepare for a new role and practice communication, step {i}.'} for i in range(80)]
-        for count in (0, 20, 80):
+        memories = [{'id': str(uuid.UUID(int=i+1)), 'text': f'I decided to prepare for a new role and practice communication, step {i}.'} for i in range(300)]
+        for count in (0, 20, 80, 300):
             engine.analyze(text, memories=memories[:count])
             results = []
             for _ in range(samples):
                 started = time.perf_counter()
                 result = engine.analyze(text, memories=memories[:count])
                 results.append({'totalMs': round((time.perf_counter()-started)*1000, 2), **result['timings']})
-            report['real']['runs'].append({'memories': count, 'medianMs': round(statistics.median(r['totalMs'] for r in results), 2), 'results': results})
+            report['real']['runs'].append({'memories': count, 'medianMs': round(statistics.median(r['totalMs'] for r in results), 2),
+                'p95Ms': round(float(np.percentile([r['totalMs'] for r in results], 95)), 2), 'results': results})
+        report['real']['concurrency'] = []
+        for count in (80, 300):
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                started = time.perf_counter()
+                results = list(pool.map(lambda _: engine.analyze(text, memories=memories[:count]), range(4)))
+                elapsed = time.perf_counter() - started
+            report['real']['concurrency'].append({'memories': count, 'requests': len(results), 'concurrency': 4,
+                'elapsedMs': round(elapsed*1000, 2), 'requestsPerSecond': round(len(results)/elapsed, 3)})
     return report
 
 

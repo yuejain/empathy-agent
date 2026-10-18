@@ -65,7 +65,7 @@ powershell -ExecutionPolicy Bypass -File .\Stop-LocalML.ps1
 
 `retrain` 使用现有编码器和公开训练集建立候选分类头，验证分区达固定门槛后发布到 `models/local/classifiers/active.json`，下一次分析热加载；`rollback` 回退上一头版本。模型目录、报告和哈希均留在本机。完整门槛及中文标签覆盖限制见 [ADVANCED_WORKFLOW.md](ADVANCED_WORKFLOW.md)。
 
-`POST /analyze` 新增可选 `query` 和 `memories: [{id,text}]`。最多 80 条、每条 500 字符；一次批量编码分别完成当前消息分类、公共语料检索和私人记忆排序。私人文本与向量不落盘、不跨请求缓存，不加入公共向量矩阵。返回 `memory_hits` 与阶段计时。新版 health 标明 `api_version: 3` 和实际加载的 `model_version`；升级后请停止并重启本地服务。
+`POST /analyze` 新增可选 `query` 和 `memories: [{id,text}]`。最多 300 条、每条 500 字符；请求体上限 1,000,000 字节；一次批量编码分别完成当前消息分类、公共语料检索和私人记忆排序。私人文本与向量不落盘、不跨请求缓存，不加入公共向量矩阵。返回 `memory_hits` 与阶段计时。新版 health 标明 `api_version: 4` 和实际加载的 `model_version`；升级后请停止并重启本地服务。
 
 在 `.env` 设置 `LOCAL_ML_URL=http://127.0.0.1:3001`，然后重启网页服务。分类和检索不需要外网；消息、情绪指向、会话上下文和参考片段会发送到配置的云端服务，由其完成回复。界面分别显示云端回复与本地 RAG 状态，每轮可查看情绪参考和来源。
 
@@ -93,3 +93,7 @@ powershell -ExecutionPolicy Bypass -File .\Stop-LocalML.ps1
 - 塔罗：原有 22 张大阿尔卡纳，正位偏向资源、逆位偏向阻力与需要，提供 A/B/C 联想。
 - 周易：模拟六次三枚硬币，自下而上排爻，6/9 为变化爻；展示上下卦及变化意象。八卦形象参考[《说卦》](https://ctext.org/book-of-changes/shuo-gua)，情绪解释由本项目编写，属于现代联想练习，不是古籍断语。
 - 情绪需要卡：围绕边界、连接、安定、探索、珍惜展开。另有文字意象、生活场景和关键词三种入口。六种玩法都支持选项续聊与跳过；危机支持优先于游戏，不作命运或诊断判断。
+
+## 重复运行训练入口
+
+`Train-LocalML.ps1` 仅在尚无 encoder/head 的首次安装中执行完整下载、初始训练及建库。已有完整模型时直接运行 `ml/train_classifier.py --candidate`，不覆盖活动头或编码器；缺少任一安装组件时停止并要求检查本地安装。候选是否发布由双语门槛决定，完成训练不等于通过。需要更新公共语料和索引时使用语料库面板的独立入口。直接运行无 `--candidate` 的 Python 初始化训练同样拒绝覆盖已有模型；读取或回退历史版本仍可用，不能将旧 legacy 版本作为新候选发布。

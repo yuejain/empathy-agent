@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "fixture": "memory-retrieval.json",
+  "sha256": "525243066a58a0381f986ea0db96a6cc41ccbe7db87fe98f5fc4b5715a395f03",
+  "cases": 12,
+  "languages": ["zh", "en"],
+  "policy": "Version the fixture and manifest before changing judgments; do not tune labels to measured output."
+}

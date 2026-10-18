@@ -1,0 +1,339 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [
+        1
+      ]
+    },
+    "fixture_id": {
+      "type": "string",
+      "enum": [
+        "bilingual-quality-v1"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "enum": [
+        "2026-10-18"
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "synthetic-agent-authored"
+          ]
+        },
+        "human_reviewed": {
+          "type": "boolean",
+          "enum": [
+            false
+          ]
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "license": {
+          "type": "string",
+          "enum": [
+            "CC0-1.0"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "human_reviewed",
+        "purpose",
+        "license"
+      ],
+      "additionalProperties": false
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "joy",
+          "sadness",
+          "anger",
+          "fear",
+          "love",
+          "surprise",
+          "confusion",
+          "neutral"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "classification": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "synthetic-agent-authored"
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "joy",
+                "sadness",
+                "anger",
+                "fear",
+                "love",
+                "surprise",
+                "confusion",
+                "neutral"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "id",
+          "language",
+          "text",
+          "source",
+          "labels",
+          "tags"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "synthetic-agent-authored"
+            ]
+          },
+          "response": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string",
+            "enum": [
+              ""
+            ]
+          },
+          "license": {
+            "type": "string",
+            "enum": [
+              "CC0-1.0"
+            ]
+          },
+          "emotions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "joy",
+                "sadness",
+                "anger",
+                "fear",
+                "love",
+                "surprise",
+                "confusion",
+                "neutral"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "group": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "id",
+          "language",
+          "text",
+          "source",
+          "response",
+          "source_url",
+          "license",
+          "emotions",
+          "category",
+          "group"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "retrieval": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "synthetic-agent-authored"
+            ]
+          },
+          "emotions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "joy",
+                "sadness",
+                "anger",
+                "fear",
+                "love",
+                "surprise",
+                "confusion",
+                "neutral"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "relevant_groups": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "minItems": 0,
+            "uniqueItems": true
+          },
+          "forbidden_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "minItems": 0,
+            "uniqueItems": true
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "id",
+          "language",
+          "text",
+          "source",
+          "emotions",
+          "relevant_groups",
+          "forbidden_ids",
+          "tags"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "schema_version",
+    "fixture_id",
+    "created_at",
+    "provenance",
+    "labels",
+    "classification",
+    "documents",
+    "retrieval"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

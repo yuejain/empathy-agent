@@ -88,13 +88,17 @@ export class ConversationOrchestrator {
     const quickCrisis = rule.preliminaryLevel === 'L2' || continuingSafety;
     const deterministic = !!(command || game || gameReply || gameRecommendation);
     const classifier = new SafetyClassifier(this.env, { enableModelLayer: !quickCrisis && !deterministic });
-    const context = historyFor(memory).map(t => ({ role: t.role, content: t.content, timestamp: t.timestamp,
-      emotionValence: t.emotion?.valence }));
+    const context = historyFor(memory).map(t => {
+      const risk = t.emotion?.observedRiskLevel ?? t.emotion?.riskLevel;
+      return { role: t.role, content: t.content, timestamp: t.timestamp,
+      emotionValence: t.role === 'user' ? t.emotion?.valence : undefined,
+      riskLevel: t.role !== 'user' || !risk ? undefined : risk === 'high' ? 'L2' as const : risk === 'medium' ? 'L1' as const : 'L0' as const };
+    });
     const [classification, knowledge, analysis] = await Promise.all([
       timed('safetyMs', classifier.classify(userInput, sessionId, context, signal)),
       timed('retrievalMs', quickCrisis || deterministic ? Promise.resolve(undefined) : this.knowledge.analyze(userInput, signal, retrieval)),
-      timed('extractionMs', !quickCrisis && !deterministic && memory.settings.capture
-        ? inferTurnAnalysis(this.extractor, userInput, signal, memory.settings.recall ? memory.entries : [],{history:historyFor(memory),affect:memory.affect?.enabled!==false}) : Promise.resolve({candidates:[],experiments:[],intent:undefined,affect:[]})),
+      timed('extractionMs', !quickCrisis && !deterministic
+        ? inferTurnAnalysis(this.extractor, userInput, signal, memory.settings.recall ? memory.entries : [],{history:historyFor(memory),capture:memory.settings.capture,affect:memory.affect?.enabled!==false}) : Promise.resolve({candidates:[],experiments:[],intent:undefined,affect:[]})),
     ]);
     timings.preparationMs = Date.now()-started;
     const localEmotion = knowledge && knowledge.confidence >= .55 ? localEmotions[knowledge.emotion] : undefined;
@@ -102,12 +106,16 @@ export class ConversationOrchestrator {
     signal?.throwIfAborted();
     const previous = state.emotionTrajectory.slice(-3);
     const delta = previous.length ? recognized.intensity - previous.reduce((sum, e) => sum + e.intensity, 0) / previous.length : 0;
+    const observedLevels = [classification.layers.rule.preliminaryLevel,
+      classification.layers.model.currentEvidence ? classification.layers.model.mainPrediction : 'L0'];
     const emotion: EmotionState = {
       primaryEmotion: recognized.primaryEmotion.name, intensity: recognized.intensity,
       valence: recognized.valence, arousal: recognized.arousal,
       trajectory: delta > 0.15 ? 'rising' : delta < -0.15 ? 'declining' : 'stable',
       secondaryEmotions: recognized.secondaryEmotion ? [recognized.secondaryEmotion.name] : [],
       riskLevel: classification.riskLevel === 'L2' ? 'high' : classification.riskLevel === 'L1' ? 'medium' : 'low',
+      observedRiskLevel: classification.riskLevel === 'L2' && observedLevels.includes('L2') ? 'high'
+        : observedLevels.some(level => level !== 'L0') ? 'medium' : 'low',
       timestamp: new Date().toISOString(),
     };
     const safety: SafetyResult = {

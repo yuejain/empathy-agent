@@ -9,6 +9,10 @@ os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 
 from retrieval import PublicIndex, lexical
 
+MAX_PRIVATE_MEMORY_CANDIDATES = 300
+# Covers the app's 300 x 500 UTF-16 code-unit records, including escaped JSON clients.
+MAX_ANALYSIS_BODY_BYTES = 1_000_000
+
 
 class AnalysisBusy(RuntimeError):
     """Bounded admission keeps timed-out clients from building an unlimited inference backlog."""
@@ -152,7 +156,8 @@ class Handler(BaseHTTPRequestHandler):
             from model_registry import status
             return self.json(200,maintenance.snapshot() | {'model':status()}) if maintenance else self.json(503,{'error':'Maintenance unavailable'})
         if self.path=='/health': return self.json(200, {'ok':True, 'role':'emotion-rag', 'classifier':True,
-            'index_documents':len(engine.docs), 'api_version':3, 'model_version':getattr(engine,'model_version','legacy'), 'index_version':getattr(engine,'index_version','legacy'), 'generator':False, 'generator_loaded':False})
+            'index_documents':len(engine.docs), 'api_version':4, 'max_memory_candidates':MAX_PRIVATE_MEMORY_CANDIDATES,
+            'model_version':getattr(engine,'model_version','legacy'), 'index_version':getattr(engine,'index_version','legacy'), 'generator':False, 'generator_loaded':False})
         self.json(404, {'error':'Not found'})
     def do_POST(self):
         if not self.allowed():
@@ -160,7 +165,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(403, {'error':'Loopback API only'})
         try:
             size = int(self.headers.get('Content-Length','0'))
-            if not 0<size<=160000:
+            if not 0<size<=MAX_ANALYSIS_BODY_BYTES:
                 self.close_connection=True
                 return self.json(413, {'error':'Body too large'})
             if not self.headers.get('Content-Type','').startswith('application/json'):
@@ -179,8 +184,9 @@ class Handler(BaseHTTPRequestHandler):
             text = body.get('text')
             if not isinstance(text,str) or not 1<=len(text)<=4000: return self.json(400, {'error':'Invalid text'})
             query = body.get('query',text); memories = body.get('memories',[])
-            if not isinstance(query,str) or not 1<=len(query)<=4000 or not isinstance(memories,list) or len(memories)>80: return self.json(400, {'error':'Invalid retrieval context'})
+            if not isinstance(query,str) or not 1<=len(query)<=4000 or not isinstance(memories,list) or len(memories)>MAX_PRIVATE_MEMORY_CANDIDATES: return self.json(400, {'error':'Invalid retrieval context'})
             if any(not isinstance(m,dict) or set(m)!={'id','text'} or not isinstance(m['id'],str) or not re.fullmatch(r'[0-9a-f-]{36}',m['id']) or not isinstance(m['text'],str) or not 1<=len(m['text'])<=500 for m in memories): return self.json(400, {'error':'Invalid private memory candidates'})
+            if len({m['id'] for m in memories}) != len(memories): return self.json(400, {'error':'Duplicate private memory identifiers'})
             return self.json(200, engine.analyze(text,query,memories) if 'query' in body or 'memories' in body else engine.analyze(text))
         except (ValueError,TypeError,AttributeError): return self.json(400, {'error':'Invalid request'})
         except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError): pass

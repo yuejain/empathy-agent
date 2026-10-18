@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "provenance": "Synthetic cases authored for regression checks; not private chats or a human-labeled population benchmark.",
+  "now": "2026-10-18T12:00:00Z",
+  "k": 6,
+  "cases": [
+    {
+      "id": "zh-old-garden", "language": "zh", "query": "我以前靠什么爱好让心情平静下来？", "tags": ["old-memory", "cross-language", "300-candidates"], "fillers": 299,
+      "memories": [{"id": "garden", "text": "Growing flowers on my balcony is the hobby that helps me feel calm.", "kind": "profile", "ageDays": 90}],
+      "relevantIds": ["garden"], "forbiddenIds": []
+    },
+    {
+      "id": "en-old-swim", "language": "en", "query": "Which sport do I use to relax after work?", "tags": ["old-memory", "cross-language", "300-candidates"], "fillers": 299,
+      "memories": [{"id": "swim", "text": "我喜欢下班后游泳，这项运动能让我放松。", "kind": "profile", "ageDays": 90}],
+      "relevantIds": ["swim"], "forbiddenIds": []
+    },
+    {
+      "id": "zh-old-design", "language": "zh", "query": "我之前决定学习哪个专业？", "tags": ["old-memory", "cross-language", "300-candidates"], "fillers": 299,
+      "memories": [{"id": "study", "text": "I decided to study graphic design at college.", "kind": "decision", "ageDays": 30}],
+      "relevantIds": ["study"], "forbiddenIds": []
+    },
+    {
+      "id": "en-old-volunteer", "language": "en", "query": "Where do I volunteer during my weekends?", "tags": ["old-memory", "cross-language", "300-candidates"], "fillers": 299,
+      "memories": [{"id": "volunteer", "text": "我每周末都去流浪动物救助站做志愿者。", "kind": "profile", "ageDays": 90}],
+      "relevantIds": ["volunteer"], "forbiddenIds": []
+    },
+    {
+      "id": "zh-corrected-city", "language": "zh", "query": "我现在决定去哪个城市工作？", "tags": ["correction"], "fillers": 10,
+      "memories": [{"id": "old-city", "text": "我决定去北京工作。", "kind": "decision", "ageDays": 5, "status": "superseded"}, {"id": "new-city", "text": "我改成去杭州工作，之前去北京的计划作废。", "kind": "decision", "ageDays": 1}],
+      "relevantIds": ["new-city"], "forbiddenIds": ["old-city"]
+    },
+    {
+      "id": "en-corrected-city", "language": "en", "query": "Which city have I now chosen to work in?", "tags": ["correction"], "fillers": 10,
+      "memories": [{"id": "old-city", "text": "I decided to work in London.", "kind": "decision", "ageDays": 5, "status": "superseded"}, {"id": "new-city", "text": "I changed my decision: I will work in Berlin instead of London.", "kind": "decision", "ageDays": 1}],
+      "relevantIds": ["new-city"], "forbiddenIds": ["old-city"]
+    },
+    {
+      "id": "zh-expired-emotion", "language": "zh", "query": "我现在的情绪怎么样？", "tags": ["expired", "negative"], "fillers": 0,
+      "memories": [{"id": "old-emotion", "text": "我很难过。", "kind": "emotion", "ageDays": 10, "expired": true}],
+      "relevantIds": [], "forbiddenIds": ["old-emotion"]
+    },
+    {
+      "id": "en-resolved-decision", "language": "en", "query": "Am I still planning to quit my job?", "tags": ["resolved", "negative"], "fillers": 0,
+      "memories": [{"id": "old-plan", "text": "I plan to quit my job.", "kind": "decision", "ageDays": 5, "status": "resolved"}],
+      "relevantIds": [], "forbiddenIds": ["old-plan"]
+    },
+    {
+      "id": "zh-recall-off", "language": "zh", "query": "我喜欢什么运动？", "tags": ["recall-off", "negative"], "recall": false, "fillers": 0,
+      "memories": [{"id": "sport", "text": "我喜欢游泳。", "kind": "profile", "ageDays": 2}],
+      "relevantIds": [], "forbiddenIds": ["sport"]
+    },
+    {
+      "id": "en-deleted-preference", "language": "en", "query": "What kind of music do I enjoy?", "tags": ["deleted", "negative"], "fillers": 0,
+      "memories": [{"id": "music", "text": "I enjoy listening to jazz music.", "kind": "profile", "ageDays": 2, "deleted": true}],
+      "relevantIds": [], "forbiddenIds": ["music"]
+    },
+    {
+      "id": "zh-current-action", "language": "zh", "query": "我最近在准备哪项考试？", "tags": ["current-action", "cross-language"], "fillers": 20,
+      "memories": [{"id": "exam", "text": "I am preparing for an English proficiency examination.", "kind": "activity", "ageDays": 2}],
+      "relevantIds": ["exam"], "forbiddenIds": []
+    },
+    {
+      "id": "en-current-action", "language": "en", "query": "What am I writing these days?", "tags": ["current-action", "cross-language"], "fillers": 20,
+      "memories": [{"id": "thesis", "text": "我最近正在撰写毕业论文。", "kind": "activity", "ageDays": 2}],
+      "relevantIds": ["thesis"], "forbiddenIds": []
+    }
+  ]
+}

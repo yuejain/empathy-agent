@@ -15,7 +15,7 @@ import { z } from 'zod';
 import {
   RiskLevel, CrisisSubtype,
   RuleLayerOutput, ModelLayerOutput, ContextLayerOutput, FusionDecisionOutput,
-  SafetyClassificationResult, SafetyContextTurn, SafetyStateMemory,
+  SafetyClassificationResult, SafetyContextTurn,
   SafetyClassifierConfig, DEFAULT_SAFETY_CONFIG,
   MatchedKeyword, MatchedPattern,
   EmotionTrend, TopicEvolution,
@@ -289,6 +289,9 @@ export class ModelLayer {
       const parsed = this.parseModelResponse(response);
 
       return {
+        assessmentSource: 'model',
+        currentEvidence: parsed.evidenceSource === 'current' && parsed.confidence >= .65 &&
+          !!parsed.currentQuote && parsed.currentQuote.trim().length >= 4 && input.includes(parsed.currentQuote),
         mainPrediction: parsed.mainLevel,
         mainProbabilities: parsed.probabilities,
         subtypePredictions: parsed.subtypes,
@@ -299,6 +302,8 @@ export class ModelLayer {
       signal?.throwIfAborted();
       // 降级：返回中等风险
       return {
+        assessmentSource: 'fallback',
+        currentEvidence: false,
         mainPrediction: 'L1',
         mainProbabilities: { L0: 0.3, L1: 0.5, L2: 0.2 },
         subtypePredictions: {
@@ -350,6 +355,8 @@ ${context.map((c, i) => `${i + 1}. ${c}`).join('\n')}`;
     "none": 0.0-1.0
   },
   "confidence": 0.0-1.0,
+  "evidence_source": "current" | "history" | "uncertain",
+  "current_quote": "仅当本轮原话自身包含风险依据时逐字引用连续片段，否则为空字符串",
   "reasoning": "判断依据（一句话）"
 }
 
@@ -359,6 +366,8 @@ ${context.map((c, i) => `${i + 1}. ${c}`).join('\n')}`;
 - L2 (Crisis): 存在即刻风险。自杀意念/计划、自伤意图、他伤威胁、虐待、急性精神病症状。
 
 关键区分：
+- 风险仅来自历史上下文时 evidence_source=history，不把历史风险再标为本轮的新观察。
+- current_quote 只能来自【用户输入】，不可复制历史、助手回复或补写含义。依据不足标 uncertain。
 - "经历"危险状态 vs "讨论"过去经历或寻求帮助
 - "我被诊断过抑郁症，正在服药" → L0
 - "我已经想好了怎么结束" → L2
@@ -387,8 +396,11 @@ ${context.map((c, i) => `${i + 1}. ${c}`).join('\n')}`;
       crisis_subtypes: z.object({ suicide_self_harm: unit, violence_others: unit, abuse: unit, acute_psychosis: unit,
         substance_abuse: unit, eating_disorder: unit, none: unit }),
       confidence: unit,
+      evidence_source: z.enum(['current','history','uncertain']).optional(),
+      current_quote: z.string().max(2000).optional(),
     }).parse(JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || 'null'));
-    return { mainLevel: parsed.risk_level, probabilities: parsed.probabilities, subtypes: parsed.crisis_subtypes, confidence: parsed.confidence };
+    return { mainLevel: parsed.risk_level, probabilities: parsed.probabilities, subtypes: parsed.crisis_subtypes, confidence: parsed.confidence,
+      evidenceSource:parsed.evidence_source,currentQuote:parsed.current_quote };
   }
 }
 
@@ -408,6 +420,9 @@ export class ContextLayer {
    */
   classify(currentInput: string, history: SafetyContextTurn[]): ContextLayerOutput {
     const startTime = Date.now();
+
+    // Only bounded user observations count; assistant wording is not user risk evidence.
+    history = history.filter(turn => turn.role === 'user').slice(-this.windowSize);
 
     // 1. 分析情绪趋势
     const emotionTrend = this.analyzeEmotionTrend(history);
@@ -886,9 +901,6 @@ export class SafetyClassifier {
   private contextLayer: ContextLayer;
   private fusionLayer: FusionLayer;
 
-  // 安全状态记忆
-  private stateMemories: Map<string, SafetyStateMemory> = new Map();
-
   constructor(env: Record<string, string>, config: Partial<SafetyClassifierConfig> = {}) {
     this.config = { ...DEFAULT_SAFETY_CONFIG, ...config };
     if (new ChatGateway(env).mode === 'demo') this.config.enableModelLayer = false;
@@ -909,9 +921,6 @@ export class SafetyClassifier {
   ): Promise<SafetyClassificationResult> {
     const totalStartTime = Date.now();
 
-    // 获取或创建安全状态记忆
-    const stateMemory = this.getOrCreateStateMemory(sessionId);
-
     // Layer 1: 规则层
     const ruleOutput = this.config.enableRuleLayer
       ? this.ruleLayer.classify(input)
@@ -930,9 +939,6 @@ export class SafetyClassifier {
 
     // Layer 4: 融合决策
     const fusionOutput = this.fusionLayer.fuse(ruleOutput, modelOutput, contextOutput);
-
-    // 更新安全状态记忆
-    this.updateStateMemory(stateMemory, fusionOutput.finalLevel, history);
 
     // 构建证据列表
     const evidence = this.collectEvidence(ruleOutput, modelOutput, contextOutput);
@@ -970,57 +976,6 @@ export class SafetyClassifier {
       suggestedResponse,
       totalProcessingTimeMs: Date.now() - totalStartTime,
     };
-  }
-
-  clearSession(sessionId: string): void { this.stateMemories.delete(sessionId); }
-
-  /**
-   * 获取安全状态记忆
-   */
-  private getOrCreateStateMemory(sessionId: string): SafetyStateMemory {
-    if (!this.stateMemories.has(sessionId)) {
-      this.stateMemories.set(sessionId, {
-        sessionId,
-        hasTriggeredL1: false,
-        hasTriggeredL2: false,
-        crisisResourcesProvided: false,
-        userReactionToIntervention: 'unknown',
-        consecutiveNegativeTurns: 0,
-        lastRiskLevel: 'L0',
-        escalationCount: 0,
-        turnCount: 0,
-      });
-    }
-    return this.stateMemories.get(sessionId)!;
-  }
-
-  /**
-   * 更新安全状态记忆
-   */
-  private updateStateMemory(
-    memory: SafetyStateMemory,
-    currentLevel: RiskLevel,
-    history: SafetyContextTurn[]
-  ): void {
-    memory.turnCount++;
-
-    if (currentLevel === 'L1') memory.hasTriggeredL1 = true;
-    if (currentLevel === 'L2') memory.hasTriggeredL2 = true;
-
-    // 检测升级
-    if (this.levelToNumber(currentLevel) > this.levelToNumber(memory.lastRiskLevel)) {
-      memory.escalationCount++;
-    }
-
-    memory.lastRiskLevel = currentLevel;
-
-    // 更新连续负面轮数
-    const lastValence = history.slice(-1)[0]?.emotionValence;
-    if (lastValence !== undefined && lastValence < -0.3) {
-      memory.consecutiveNegativeTurns++;
-    } else {
-      memory.consecutiveNegativeTurns = 0;
-    }
   }
 
   /**
@@ -1128,6 +1083,8 @@ export class SafetyClassifier {
 
   private getDefaultModelOutput(): ModelLayerOutput {
     return {
+      assessmentSource: 'disabled',
+      currentEvidence: false,
       mainPrediction: 'L0',
       mainProbabilities: { L0: 0.7, L1: 0.2, L2: 0.1 },
       subtypePredictions: {
