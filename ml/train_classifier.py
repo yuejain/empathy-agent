@@ -8,20 +8,26 @@ from corpus import ROOT, DATA, LABELS, read_jsonl, write_json, digest
 os.environ.setdefault('HF_HOME',str(DATA/'cache/huggingface'))
 os.environ.setdefault('HF_HUB_DISABLE_XET','1')
 
-def metrics(y, predicted):
-    from sklearn.metrics import f1_score, precision_score, recall_score
-    return {'examples':len(y),'macro_f1':float(f1_score(y,predicted,average='macro',zero_division=0)),
-        'micro_f1':float(f1_score(y,predicted,average='micro',zero_division=0)),
-        'micro_precision':float(precision_score(y,predicted,average='micro',zero_division=0)),
-        'micro_recall':float(recall_score(y,predicted,average='micro',zero_division=0))}
+def metrics(y, probabilities):
+    from quality_metrics import classification_metrics
+    return classification_metrics(y.tolist(),probabilities.tolist())
 
 def main(argv=None):
     parser=argparse.ArgumentParser(); parser.add_argument('--max-per-language',type=int,default=10000); parser.add_argument('--candidate',action='store_true'); args=parser.parse_args(argv)
     from model_registry import classifier_lease
     # Held by the training process itself, even if its launching service exits.
-    with classifier_lease(ROOT/'models/local'):train(args)
+    with classifier_lease(ROOT/'models/local'):
+        assert_training_mode(args,ROOT/'models/local')
+        train(args)
+
+def assert_training_mode(args,out):
+    # The original path is bootstrap only. Re-running setup must not overwrite an
+    # installed encoder/head and bypass the candidate publication gate.
+    if not args.candidate and any(path.exists() for path in (out/'emotion-head.joblib',out/'encoder',out/'classifiers/active.json')):
+        raise ValueError('Local classifier is already installed; retrain with --candidate')
 
 def train(args):
+    assert_training_mode(args,ROOT/'models/local')
     import numpy as np, torch, joblib
     from sentence_transformers import SentenceTransformer
     from sklearn.linear_model import LogisticRegression
@@ -73,10 +79,12 @@ def train(args):
         indexes=[n+i for i,r in enumerate(evaluation) if r['split']==split and r['language']==language and r['label_origin']==origin]
         if not indexes: continue
         probabilities=np.stack([h.predict_proba(x[indexes])[:,1] for h in heads],axis=1)
-        report['evaluations'][f'{split}/{language}/{origin}']=metrics(y[indexes],probabilities>=.5)
+        evidence={'sample_sha256':digest(json.dumps(sorted((all_rows[i]['content_hash'], sorted(all_rows[i]['emotions'])) for i in indexes),ensure_ascii=False)),
+            'split':split,'language':language,'label_origin':origin}
+        report['evaluations'][f'{split}/{language}/{origin}']={**metrics(y[indexes],probabilities),**evidence}
         if old_head:
             probabilities=np.stack([h.predict_proba(x[indexes])[:,1] for h in old_head['heads']],axis=1)
-            baseline[f'{split}/{language}/{origin}']=metrics(y[indexes],probabilities>=.5)
+            baseline[f'{split}/{language}/{origin}']={**metrics(y[indexes],probabilities),**evidence}
     if args.candidate:
         from model_registry import quality_gate,atomic_json,publish
         gate=quality_gate(report['evaluations'],baseline)

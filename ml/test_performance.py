@@ -64,6 +64,20 @@ class RetrievalPerformanceTests(unittest.TestCase):
             self.assertEqual(encode.call_count, 2)
         self.assertNotIn('same private text', str(vars(engine)))
 
+    def test_full_300_record_request_scores_every_id_and_does_not_cache_private_embeddings(self):
+        engine = test_joint.JointTests().engine()
+        memories = [{'id': str(index), 'text': f'private synthetic record {index}'} for index in range(300)]
+        with patch.object(engine.encoder, 'encode', wraps=engine.encoder.encode) as encode:
+            result = engine.analyze('current joy', memories=memories)
+            self.assertEqual(len(result['memory_hits']), 300)
+            self.assertEqual({hit['id'] for hit in result['memory_hits']}, {item['id'] for item in memories})
+            self.assertEqual(len(encode.call_args.args[0]), 301)
+            self.assertEqual(encode.call_args.kwargs['batch_size'], 32)
+            second = engine.analyze('current joy', memories=[memories[-1]])
+            self.assertEqual(len(encode.call_args.args[0]), 2)
+            self.assertEqual([hit['id'] for hit in second['memory_hits']], ['299'])
+        self.assertNotIn('private synthetic record', str(vars(engine)))
+
     def test_admission_rejects_backlog_and_releases_slots_after_failure(self):
         engine = test_joint.JointTests().engine()
         engine.analysis_slots = threading.BoundedSemaphore(1)

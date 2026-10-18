@@ -1,0 +1,1273 @@
+{
+  "schema_version": 1,
+  "fixture_id": "bilingual-quality-v1",
+  "created_at": "2026-10-18",
+  "provenance": {
+    "kind": "synthetic-agent-authored",
+    "human_reviewed": false,
+    "purpose": "Frozen regression examples, not independent human validation or population accuracy evidence.",
+    "license": "CC0-1.0"
+  },
+  "labels": [
+    "joy",
+    "sadness",
+    "anger",
+    "fear",
+    "love",
+    "surprise",
+    "confusion",
+    "neutral"
+  ],
+  "classification": [
+    {
+      "id": "zh-joy-1",
+      "language": "zh",
+      "text": "今天终于完成了难题，我很开心。",
+      "labels": [
+        "joy"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-joy-2",
+      "language": "zh",
+      "text": "大家认可了我的努力，真让人高兴。",
+      "labels": [
+        "joy"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-joy-3",
+      "language": "zh",
+      "text": "刚收到录取通知，我兴奋得睡不着。",
+      "labels": [
+        "joy"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-joy-1",
+      "language": "en",
+      "text": "I finally solved the problem and I feel happy.",
+      "labels": [
+        "joy"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-joy-2",
+      "language": "en",
+      "text": "My hard work was appreciated and I am delighted.",
+      "labels": [
+        "joy"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-joy-3",
+      "language": "en",
+      "text": "I just received my acceptance letter and I am so excited.",
+      "labels": [
+        "joy"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-sadness-1",
+      "language": "zh",
+      "text": "朋友搬走后，家里安静得让我难过。",
+      "labels": [
+        "sadness"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-sadness-2",
+      "language": "zh",
+      "text": "努力了很久还是失败了，我很失落。",
+      "labels": [
+        "sadness"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-sadness-3",
+      "language": "zh",
+      "text": "我想念已经离开的奶奶，心里很悲伤。",
+      "labels": [
+        "sadness"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-sadness-1",
+      "language": "en",
+      "text": "Since my friend moved away I have felt sad and lonely.",
+      "labels": [
+        "sadness"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-sadness-2",
+      "language": "en",
+      "text": "I failed after working so hard and feel deeply disappointed.",
+      "labels": [
+        "sadness"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-sadness-3",
+      "language": "en",
+      "text": "I miss my grandmother who passed away and feel grief.",
+      "labels": [
+        "sadness"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-anger-1",
+      "language": "zh",
+      "text": "我的劳动成果被冒领了，我很愤怒。",
+      "labels": [
+        "anger"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-anger-2",
+      "language": "zh",
+      "text": "他又一次失约，我真的很生气。",
+      "labels": [
+        "anger"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-anger-3",
+      "language": "zh",
+      "text": "别人不停打断我，我感到恼火。",
+      "labels": [
+        "anger"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-anger-1",
+      "language": "en",
+      "text": "Someone took credit for my work and I am furious.",
+      "labels": [
+        "anger"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-anger-2",
+      "language": "en",
+      "text": "He broke his promise again and I am angry.",
+      "labels": [
+        "anger"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-anger-3",
+      "language": "en",
+      "text": "People keep interrupting me and it makes me annoyed.",
+      "labels": [
+        "anger"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-fear-1",
+      "language": "zh",
+      "text": "明天要公开演讲，我紧张得手心出汗。",
+      "labels": [
+        "fear"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-fear-2",
+      "language": "zh",
+      "text": "等待检查结果时，我一直担心出问题。",
+      "labels": [
+        "fear"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-fear-3",
+      "language": "zh",
+      "text": "新环境让我害怕，我不知道会发生什么。",
+      "labels": [
+        "fear"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-fear-1",
+      "language": "en",
+      "text": "I am nervous about speaking in public tomorrow.",
+      "labels": [
+        "fear"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-fear-2",
+      "language": "en",
+      "text": "Waiting for the results makes me worried something is wrong.",
+      "labels": [
+        "fear"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-fear-3",
+      "language": "en",
+      "text": "The unfamiliar surroundings scare me and I feel afraid.",
+      "labels": [
+        "fear"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-love-1",
+      "language": "zh",
+      "text": "我很珍惜陪伴我的朋友，想好好关心他们。",
+      "labels": [
+        "love"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-love-2",
+      "language": "zh",
+      "text": "我爱我的家人，也想让他们感到被关爱。",
+      "labels": [
+        "love"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-love-3",
+      "language": "zh",
+      "text": "她一直照顾我，我对她充满深厚的感情。",
+      "labels": [
+        "love"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-love-1",
+      "language": "en",
+      "text": "I love my friends and want to care for them.",
+      "labels": [
+        "love"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-love-2",
+      "language": "en",
+      "text": "I love my family and want them to feel cared for.",
+      "labels": [
+        "love"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-love-3",
+      "language": "en",
+      "text": "She has always cared for me and I feel deep affection for her.",
+      "labels": [
+        "love"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-surprise-1",
+      "language": "zh",
+      "text": "竟然在这里遇到多年没见的同学，我很惊讶。",
+      "labels": [
+        "surprise"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-surprise-2",
+      "language": "zh",
+      "text": "结果完全出乎意料，真让我吃惊。",
+      "labels": [
+        "surprise"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-surprise-3",
+      "language": "zh",
+      "text": "我打开盒子才发现是她亲手做的，太意外了。",
+      "labels": [
+        "surprise"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-surprise-1",
+      "language": "en",
+      "text": "I unexpectedly met an old classmate here and I am surprised.",
+      "labels": [
+        "surprise"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-surprise-2",
+      "language": "en",
+      "text": "The outcome was completely unexpected and astonished me.",
+      "labels": [
+        "surprise"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-surprise-3",
+      "language": "en",
+      "text": "I opened the box and was surprised she had made it herself.",
+      "labels": [
+        "surprise"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-confusion-1",
+      "language": "zh",
+      "text": "两份说明互相矛盾，我越看越困惑。",
+      "labels": [
+        "confusion"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-confusion-2",
+      "language": "zh",
+      "text": "我不知道该选哪条路，脑子很混乱。",
+      "labels": [
+        "confusion"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-confusion-3",
+      "language": "zh",
+      "text": "他的说法和行动相反，让我摸不着头脑。",
+      "labels": [
+        "confusion"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-confusion-1",
+      "language": "en",
+      "text": "The two instructions contradict each other and I am confused.",
+      "labels": [
+        "confusion"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-confusion-2",
+      "language": "en",
+      "text": "I cannot decide which path to choose and feel uncertain.",
+      "labels": [
+        "confusion"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-confusion-3",
+      "language": "en",
+      "text": "His words and actions conflict and leave me puzzled.",
+      "labels": [
+        "confusion"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-neutral-1",
+      "language": "zh",
+      "text": "会议安排在周三下午三点。",
+      "labels": [
+        "neutral"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-neutral-2",
+      "language": "zh",
+      "text": "我把文件放到了桌子左边。",
+      "labels": [
+        "neutral"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-neutral-3",
+      "language": "zh",
+      "text": "这趟车每隔十五分钟发车。",
+      "labels": [
+        "neutral"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-neutral-1",
+      "language": "en",
+      "text": "The meeting is scheduled for Wednesday at three.",
+      "labels": [
+        "neutral"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-neutral-2",
+      "language": "en",
+      "text": "I placed the document on the left side of the desk.",
+      "labels": [
+        "neutral"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-neutral-3",
+      "language": "en",
+      "text": "This bus leaves every fifteen minutes.",
+      "labels": [
+        "neutral"
+      ],
+      "tags": [
+        "direct"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-negation-1",
+      "language": "zh",
+      "text": "我现在不难过了，终于轻松开心起来。",
+      "labels": [
+        "joy"
+      ],
+      "tags": [
+        "negation"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-negation-1",
+      "language": "en",
+      "text": "I am no longer sad; I feel happy and relieved now.",
+      "labels": [
+        "joy"
+      ],
+      "tags": [
+        "negation"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "zh-mixed-1",
+      "language": "zh",
+      "text": "搬去新城市让我很开心，但离开朋友又让我难过。",
+      "labels": [
+        "joy",
+        "sadness"
+      ],
+      "tags": [
+        "mixed"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "en-mixed-1",
+      "language": "en",
+      "text": "I am happy to move to a new city but sad about leaving my friends.",
+      "labels": [
+        "joy",
+        "sadness"
+      ],
+      "tags": [
+        "mixed"
+      ],
+      "source": "synthetic-agent-authored"
+    }
+  ],
+  "documents": [
+    {
+      "id": "doc-speech-zh",
+      "text": "公开演讲前的紧张，可以先练习开场并把任务拆小。",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "zh",
+      "emotions": [
+        "fear"
+      ],
+      "category": "synthetic-support",
+      "group": "speech"
+    },
+    {
+      "id": "doc-speech-en",
+      "text": "Nervous about public speaking? Rehearse the opening and break preparation into small steps.",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "en",
+      "emotions": [
+        "fear"
+      ],
+      "category": "synthetic-support",
+      "group": "speech"
+    },
+    {
+      "id": "doc-grief-zh",
+      "text": "想念离去的亲人时，可以写下共同的回忆，允许悲伤慢慢表达。",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "zh",
+      "emotions": [
+        "sadness"
+      ],
+      "category": "synthetic-support",
+      "group": "grief"
+    },
+    {
+      "id": "doc-grief-en",
+      "text": "When grieving a loved one, writing down shared memories can offer room to express sadness.",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "en",
+      "emotions": [
+        "sadness"
+      ],
+      "category": "synthetic-support",
+      "group": "grief"
+    },
+    {
+      "id": "doc-credit-zh",
+      "text": "工作成果被冒领会令人愤怒，先整理事实，再清楚表达自己的贡献。",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "zh",
+      "emotions": [
+        "anger"
+      ],
+      "category": "synthetic-support",
+      "group": "credit"
+    },
+    {
+      "id": "doc-credit-en",
+      "text": "When someone takes credit for your work, document the facts before explaining your contribution.",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "en",
+      "emotions": [
+        "anger"
+      ],
+      "category": "synthetic-support",
+      "group": "credit"
+    },
+    {
+      "id": "doc-celebrate-zh",
+      "text": "完成长期目标后，可以给自己一个小小的庆祝，记录付出的努力。",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "zh",
+      "emotions": [
+        "joy"
+      ],
+      "category": "synthetic-support",
+      "group": "celebrate"
+    },
+    {
+      "id": "doc-celebrate-en",
+      "text": "After completing a long-term goal, celebrate and recognize the effort you invested.",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "en",
+      "emotions": [
+        "joy"
+      ],
+      "category": "synthetic-support",
+      "group": "celebrate"
+    },
+    {
+      "id": "doc-care-zh",
+      "text": "想向家人表达关心，可以先问他们需要什么，再给予具体的陪伴。",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "zh",
+      "emotions": [
+        "love"
+      ],
+      "category": "synthetic-support",
+      "group": "care"
+    },
+    {
+      "id": "doc-care-en",
+      "text": "To show family you care, ask what they need and offer specific support.",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "en",
+      "emotions": [
+        "love"
+      ],
+      "category": "synthetic-support",
+      "group": "care"
+    },
+    {
+      "id": "doc-choice-zh",
+      "text": "面对两个职业选择时，列出价值取舍，比较各自的时间和成本。",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "zh",
+      "emotions": [
+        "confusion"
+      ],
+      "category": "synthetic-support",
+      "group": "choice"
+    },
+    {
+      "id": "doc-choice-en",
+      "text": "When choosing between two jobs, compare your values and the time and cost of each option.",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "en",
+      "emotions": [
+        "confusion"
+      ],
+      "category": "synthetic-support",
+      "group": "choice"
+    },
+    {
+      "id": "doc-surprise-zh",
+      "text": "意外收到朋友亲手准备的礼物，可以表达惊喜并感谢那份心意。",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "zh",
+      "emotions": [
+        "surprise"
+      ],
+      "category": "synthetic-support",
+      "group": "surprise"
+    },
+    {
+      "id": "doc-surprise-en",
+      "text": "When surprised by a handmade gift from a friend, express your surprise and appreciate the thought.",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "en",
+      "emotions": [
+        "surprise"
+      ],
+      "category": "synthetic-support",
+      "group": "surprise"
+    },
+    {
+      "id": "doc-schedule-zh",
+      "text": "记录会议时间和待办事项时，可以按照日期整理日程。",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "zh",
+      "emotions": [
+        "neutral"
+      ],
+      "category": "synthetic-support",
+      "group": "schedule"
+    },
+    {
+      "id": "doc-schedule-en",
+      "text": "When recording meeting times and tasks, organize your schedule by date.",
+      "response": "",
+      "source": "synthetic-agent-authored",
+      "source_url": "",
+      "license": "CC0-1.0",
+      "language": "en",
+      "emotions": [
+        "neutral"
+      ],
+      "category": "synthetic-support",
+      "group": "schedule"
+    }
+  ],
+  "retrieval": [
+    {
+      "id": "query-speech-zh",
+      "language": "zh",
+      "text": "上台讲话之前我总是很紧张，怎样准备？",
+      "emotions": [
+        "fear"
+      ],
+      "relevant_groups": [
+        "speech"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-speech-en",
+      "language": "en",
+      "text": "I get anxious before giving a talk. How can I prepare?",
+      "emotions": [
+        "fear"
+      ],
+      "relevant_groups": [
+        "speech"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-grief-zh",
+      "language": "zh",
+      "text": "我非常想念去世的亲人，有什么方式表达悲伤？",
+      "emotions": [
+        "sadness"
+      ],
+      "relevant_groups": [
+        "grief"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-grief-en",
+      "language": "en",
+      "text": "I miss a loved one who died. How can I express my grief?",
+      "emotions": [
+        "sadness"
+      ],
+      "relevant_groups": [
+        "grief"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-credit-zh",
+      "language": "zh",
+      "text": "同事把我的项目成果说成他的，我该如何表达愤怒？",
+      "emotions": [
+        "anger"
+      ],
+      "relevant_groups": [
+        "credit"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-credit-en",
+      "language": "en",
+      "text": "My colleague claimed my project as theirs and I am angry. What can I do?",
+      "emotions": [
+        "anger"
+      ],
+      "relevant_groups": [
+        "credit"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-celebrate-zh",
+      "language": "zh",
+      "text": "终于达成坚持很久的目标了，我想庆祝一下。",
+      "emotions": [
+        "joy"
+      ],
+      "relevant_groups": [
+        "celebrate"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-celebrate-en",
+      "language": "en",
+      "text": "I finally reached a goal I worked toward for months and want to celebrate.",
+      "emotions": [
+        "joy"
+      ],
+      "relevant_groups": [
+        "celebrate"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-care-zh",
+      "language": "zh",
+      "text": "我想让家人知道我关心他们，怎么表达爱？",
+      "emotions": [
+        "love"
+      ],
+      "relevant_groups": [
+        "care"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-care-en",
+      "language": "en",
+      "text": "How can I show my family that I love and care for them?",
+      "emotions": [
+        "love"
+      ],
+      "relevant_groups": [
+        "care"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-choice-zh",
+      "language": "zh",
+      "text": "两份工作机会让我难以抉择，有什么比较方法？",
+      "emotions": [
+        "confusion"
+      ],
+      "relevant_groups": [
+        "choice"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-choice-en",
+      "language": "en",
+      "text": "I am confused between two job offers. How should I compare them?",
+      "emotions": [
+        "confusion"
+      ],
+      "relevant_groups": [
+        "choice"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-surprise-zh",
+      "language": "zh",
+      "text": "朋友偷偷送我亲手做的礼物，太惊喜了。",
+      "emotions": [
+        "surprise"
+      ],
+      "relevant_groups": [
+        "surprise"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-surprise-en",
+      "language": "en",
+      "text": "My friend secretly made a gift for me and I am so surprised.",
+      "emotions": [
+        "surprise"
+      ],
+      "relevant_groups": [
+        "surprise"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-schedule-zh",
+      "language": "zh",
+      "text": "我想把会议时间和工作任务整理成日程。",
+      "emotions": [
+        "neutral"
+      ],
+      "relevant_groups": [
+        "schedule"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-schedule-en",
+      "language": "en",
+      "text": "I want to organize meeting times and work tasks into a schedule.",
+      "emotions": [
+        "neutral"
+      ],
+      "relevant_groups": [
+        "schedule"
+      ],
+      "forbidden_ids": [],
+      "tags": [
+        "paraphrase",
+        "cross-language-documents"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-no-answer-1",
+      "language": "zh",
+      "text": "如何查询火车票的退票规则？",
+      "emotions": [
+        "neutral"
+      ],
+      "relevant_groups": [],
+      "forbidden_ids": [
+        "doc-speech-zh",
+        "doc-speech-en",
+        "doc-grief-zh",
+        "doc-grief-en",
+        "doc-credit-zh",
+        "doc-credit-en",
+        "doc-celebrate-zh",
+        "doc-celebrate-en",
+        "doc-care-zh",
+        "doc-care-en",
+        "doc-choice-zh",
+        "doc-choice-en",
+        "doc-surprise-zh",
+        "doc-surprise-en",
+        "doc-schedule-zh",
+        "doc-schedule-en"
+      ],
+      "tags": [
+        "no-answer"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-no-answer-2",
+      "language": "en",
+      "text": "How do I check train ticket refund rules?",
+      "emotions": [
+        "neutral"
+      ],
+      "relevant_groups": [],
+      "forbidden_ids": [
+        "doc-speech-zh",
+        "doc-speech-en",
+        "doc-grief-zh",
+        "doc-grief-en",
+        "doc-credit-zh",
+        "doc-credit-en",
+        "doc-celebrate-zh",
+        "doc-celebrate-en",
+        "doc-care-zh",
+        "doc-care-en",
+        "doc-choice-zh",
+        "doc-choice-en",
+        "doc-surprise-zh",
+        "doc-surprise-en",
+        "doc-schedule-zh",
+        "doc-schedule-en"
+      ],
+      "tags": [
+        "no-answer"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-no-answer-3",
+      "language": "zh",
+      "text": "太阳到地球的距离有多少公里？",
+      "emotions": [
+        "neutral"
+      ],
+      "relevant_groups": [],
+      "forbidden_ids": [
+        "doc-speech-zh",
+        "doc-speech-en",
+        "doc-grief-zh",
+        "doc-grief-en",
+        "doc-credit-zh",
+        "doc-credit-en",
+        "doc-celebrate-zh",
+        "doc-celebrate-en",
+        "doc-care-zh",
+        "doc-care-en",
+        "doc-choice-zh",
+        "doc-choice-en",
+        "doc-surprise-zh",
+        "doc-surprise-en",
+        "doc-schedule-zh",
+        "doc-schedule-en"
+      ],
+      "tags": [
+        "no-answer"
+      ],
+      "source": "synthetic-agent-authored"
+    },
+    {
+      "id": "query-no-answer-4",
+      "language": "en",
+      "text": "How many kilometres separate the Earth and the Sun?",
+      "emotions": [
+        "neutral"
+      ],
+      "relevant_groups": [],
+      "forbidden_ids": [
+        "doc-speech-zh",
+        "doc-speech-en",
+        "doc-grief-zh",
+        "doc-grief-en",
+        "doc-credit-zh",
+        "doc-credit-en",
+        "doc-celebrate-zh",
+        "doc-celebrate-en",
+        "doc-care-zh",
+        "doc-care-en",
+        "doc-choice-zh",
+        "doc-choice-en",
+        "doc-surprise-zh",
+        "doc-surprise-en",
+        "doc-schedule-zh",
+        "doc-schedule-en"
+      ],
+      "tags": [
+        "no-answer"
+      ],
+      "source": "synthetic-agent-authored"
+    }
+  ]
+}

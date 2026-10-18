@@ -6,17 +6,23 @@ from corpus import write_json,digest,LABELS
 import model_registry as registry
 import serve,maintenance,train_classifier
 
+def valid_evaluations():
+    return {f'validation/{language}/human':{'examples':100,'macro_f1':.5,'micro_f1':.5,'micro_precision':.5,'micro_recall':.5,
+        'ece':.1,'brier':.1,'calibration_bins':10,'label_support':{label:10 for label in LABELS},
+        'sample_sha256':digest(language),'split':'validation','language':language,'label_origin':'human'} for language in ('zh','en')}
+
 class ModelTests(unittest.TestCase):
     def test_frozen_gate_uses_human_validation_not_test_and_rejects_invalid_scores(self):
-        baseline={'validation/en/human':{'examples':100,'macro_f1':.5},'test/en/human':{'examples':100,'macro_f1':.7}}
-        candidate={'validation/en/human':{'examples':100,'macro_f1':.49},'test/en/human':{'examples':100,'macro_f1':.1}}
+        baseline=valid_evaluations();candidate=valid_evaluations()
+        candidate['test/en/human']={'examples':100,'macro_f1':.1}
         self.assertTrue(registry.quality_gate(candidate,baseline)['passed'])
-        for value in [.47,float('nan'),float('inf'),None]:
+        for value in [.49,float('nan'),float('inf'),None,True]:
             candidate['validation/en/human']['macro_f1']=value;self.assertFalse(registry.quality_gate(candidate,baseline)['passed'])
         self.assertFalse(registry.quality_gate({}, {})['passed'])
     def model(self,root,passed=True):
         version=uuid.uuid4().hex;path=registry.location(version,root);path.parent.mkdir(parents=True);path.write_bytes(b'fixture-local-model')
-        write_json(path.parent/'manifest.json',{'version':version,'passed':passed,'head_sha256':digest(path.read_bytes())});return version
+        write_json(path.parent/'manifest.json',{'version':version,'passed':passed,'head_sha256':digest(path.read_bytes()),
+            'gate_version':2,'evaluations':valid_evaluations(),'baseline':valid_evaluations()});return version
     def test_publication_and_rollback_preserve_previous_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);(root/'emotion-head.joblib').write_bytes(b'original');version=self.model(root)
@@ -30,6 +36,24 @@ class ModelTests(unittest.TestCase):
             with self.assertRaises(ValueError):registry.publish(good,root)
             self.assertEqual(registry.pointer(root)['version'],'legacy')
             with self.assertRaises(ValueError):registry.location('../escape',root)
+            with self.assertRaises(ValueError):registry.publish('legacy',root)
+    def test_boolean_pass_flag_cannot_bypass_missing_bilingual_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'emotion-head.joblib').write_bytes(b'original');version=self.model(root)
+            path=registry.location(version,root).parent/'manifest.json'
+            report=json.loads(path.read_text(encoding='utf-8'));report['evaluations'].pop('validation/zh/human');write_json(path,report)
+            with self.assertRaises(ValueError):registry.publish(version,root)
+            self.assertEqual(registry.pointer(root)['version'],'legacy')
+    def test_existing_model_cannot_be_overwritten_using_bootstrap_training(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)/'models/local';root.mkdir(parents=True)
+            train_classifier.assert_training_mode(SimpleNamespace(candidate=False),root)
+            (root/'emotion-head.joblib').write_bytes(b'original')
+            with patch.object(train_classifier,'ROOT',Path(directory)),patch.object(train_classifier,'train') as train:
+                with self.assertRaisesRegex(ValueError,'--candidate'):train_classifier.main([])
+                train.assert_not_called()
+                train_classifier.main(['--candidate']);train.assert_called_once()
+            self.assertEqual((root/'emotion-head.joblib').read_bytes(),b'original')
     def test_failed_head_reload_leaves_loaded_model_unchanged(self):
         e=serve.Engine.__new__(serve.Engine);e.model_version='legacy';e.head={'original':True};e.encoder=SimpleNamespace(get_sentence_embedding_dimension=lambda:384);e.model_lock=threading.Lock()
         bad={'labels':LABELS,'heads':[SimpleNamespace(n_features_in_=3) for _ in LABELS]}

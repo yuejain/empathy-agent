@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+// Matches the per-owner profile bound; semantic scoring must see every eligible record.
+export const MAX_PRIVATE_MEMORY_CANDIDATES = 300;
+
 const emotionLabel = z.enum(['joy', 'sadness', 'anger', 'fear', 'love', 'surprise', 'confusion', 'neutral']);
 const score = z.number().finite().min(0).max(1);
 const hitSchema = z.object({ id: z.string().max(200), text: z.string().max(4000), response: z.string().max(4000).nullable(),
@@ -7,7 +10,7 @@ const hitSchema = z.object({ id: z.string().max(200), text: z.string().max(4000)
   emotions: z.array(emotionLabel).max(8), category: z.string().max(100), score });
 const analysisSchema = z.object({ emotion: emotionLabel, confidence: score,
   scores: z.record(emotionLabel, score), label_source: z.literal('local-trained-head'), hits: z.array(hitSchema).max(3), index_size: z.number().int().nonnegative(),
-  memory_hits: z.array(z.object({id:z.string().uuid(),score:z.number().finite().min(-1).max(1)})).max(80).optional(),
+  memory_hits: z.array(z.object({id:z.string().uuid(),score:z.number().finite().min(-1).max(1)})).max(MAX_PRIVATE_MEMORY_CANDIDATES).optional(),
   timings: z.object({encodeMs:z.number().nonnegative(),searchMs:z.number().nonnegative()}).optional() })
   .refine(data => {
     const primary = data.scores[data.emotion];

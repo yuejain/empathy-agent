@@ -1,0 +1,576 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [
+        1
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "regression_only"
+      ]
+    },
+    "fixture_id": {
+      "type": "string",
+      "enum": [
+        "bilingual-quality-v1"
+      ]
+    },
+    "fixture_sha256": {
+      "type": "string",
+      "pattern": "[0-9a-f]{64}"
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "provenance": {
+      "type": "string",
+      "enum": [
+        "synthetic-agent-authored"
+      ]
+    },
+    "human_validation": {
+      "type": "boolean",
+      "enum": [
+        false
+      ]
+    },
+    "model": {
+      "type": "object",
+      "properties": {
+        "head_sha256": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "encoder_fingerprint_sha256": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "device": {
+          "type": "string",
+          "enum": [
+            "cpu"
+          ]
+        },
+        "network": {
+          "type": "string",
+          "enum": [
+            "offline"
+          ]
+        }
+      },
+      "required": [
+        "head_sha256",
+        "encoder_fingerprint_sha256",
+        "version",
+        "device",
+        "network"
+      ],
+      "additionalProperties": false
+    },
+    "method": {
+      "type": "object",
+      "properties": {
+        "threshold": {
+          "type": "number",
+          "enum": [
+            0.5
+          ]
+        },
+        "ece_bins": {
+          "type": "integer",
+          "enum": [
+            10
+          ]
+        },
+        "calibration": {
+          "type": "string",
+          "enum": [
+            "all sample-label pairs, fixed equal-width bins"
+          ]
+        },
+        "retrieval_corpus": {
+          "type": "string",
+          "enum": [
+            "synthetic fixture documents; not the deployed public index"
+          ]
+        }
+      },
+      "required": [
+        "threshold",
+        "ece_bins",
+        "calibration",
+        "retrieval_corpus"
+      ],
+      "additionalProperties": false
+    },
+    "classification": {
+      "type": "object",
+      "properties": {
+        "zh": {
+          "$ref": "#/$defs/classification_metrics"
+        },
+        "en": {
+          "$ref": "#/$defs/classification_metrics"
+        },
+        "all": {
+          "$ref": "#/$defs/classification_metrics"
+        }
+      },
+      "required": [
+        "zh",
+        "en",
+        "all"
+      ],
+      "additionalProperties": false
+    },
+    "public_retrieval": {
+      "type": "object",
+      "properties": {
+        "zh": {
+          "$ref": "#/$defs/retrieval_metrics"
+        },
+        "en": {
+          "$ref": "#/$defs/retrieval_metrics"
+        },
+        "all": {
+          "$ref": "#/$defs/retrieval_metrics"
+        }
+      },
+      "required": [
+        "zh",
+        "en",
+        "all"
+      ],
+      "additionalProperties": false
+    },
+    "public_retrieval_oracle_emotion": {
+      "type": "object",
+      "properties": {
+        "zh": {
+          "$ref": "#/$defs/retrieval_metrics"
+        },
+        "en": {
+          "$ref": "#/$defs/retrieval_metrics"
+        },
+        "all": {
+          "$ref": "#/$defs/retrieval_metrics"
+        }
+      },
+      "required": [
+        "zh",
+        "en",
+        "all"
+      ],
+      "additionalProperties": false
+    },
+    "classification_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en"
+            ]
+          },
+          "expected": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "joy",
+                "sadness",
+                "anger",
+                "fear",
+                "love",
+                "surprise",
+                "confusion",
+                "neutral"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "predicted": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "joy",
+                "sadness",
+                "anger",
+                "fear",
+                "love",
+                "surprise",
+                "confusion",
+                "neutral"
+              ]
+            },
+            "minItems": 0,
+            "uniqueItems": true
+          },
+          "probabilities": {
+            "type": "object",
+            "properties": {
+              "joy": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "sadness": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "anger": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "fear": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "love": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "surprise": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "confusion": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "neutral": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "joy",
+              "sadness",
+              "anger",
+              "fear",
+              "love",
+              "surprise",
+              "confusion",
+              "neutral"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "language",
+          "expected",
+          "predicted",
+          "probabilities"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "public_retrieval_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en"
+            ]
+          },
+          "relevant_groups": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "minItems": 0,
+            "uniqueItems": true
+          },
+          "retrieved_document_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "minItems": 0,
+            "uniqueItems": true
+          },
+          "oracle_document_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "minItems": 0,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "id",
+          "language",
+          "relevant_groups",
+          "retrieved_document_ids",
+          "oracle_document_ids"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "elapsed_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "schema_version",
+    "status",
+    "fixture_id",
+    "fixture_sha256",
+    "created_at",
+    "provenance",
+    "human_validation",
+    "model",
+    "method",
+    "classification",
+    "public_retrieval",
+    "public_retrieval_oracle_emotion",
+    "classification_cases",
+    "public_retrieval_cases",
+    "elapsed_seconds",
+    "limitations"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "classification_metrics": {
+      "type": "object",
+      "properties": {
+        "examples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "macro_f1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "micro_f1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "micro_precision": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "micro_recall": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "brier": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "ece": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "calibration_bins": {
+          "type": "integer",
+          "enum": [
+            10
+          ]
+        },
+        "label_support": {
+          "type": "object",
+          "properties": {
+            "joy": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sadness": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "anger": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "fear": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "love": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "surprise": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "confusion": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "neutral": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "joy",
+            "sadness",
+            "anger",
+            "fear",
+            "love",
+            "surprise",
+            "confusion",
+            "neutral"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "examples",
+        "macro_f1",
+        "micro_f1",
+        "micro_precision",
+        "micro_recall",
+        "brier",
+        "ece",
+        "calibration_bins",
+        "label_support"
+      ],
+      "additionalProperties": false
+    },
+    "retrieval_metrics": {
+      "type": "object",
+      "properties": {
+        "queries": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "answerable_queries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "no_answer_queries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "k": {
+          "type": "integer",
+          "enum": [
+            3
+          ]
+        },
+        "recall_at_k": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mrr": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "returned_hits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "false_hits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "forbidden_hits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "false_hit_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "forbidden_hit_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "no_answer_false_positive_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "queries",
+        "answerable_queries",
+        "no_answer_queries",
+        "k",
+        "recall_at_k",
+        "mrr",
+        "returned_hits",
+        "false_hits",
+        "forbidden_hits",
+        "false_hit_rate",
+        "forbidden_hit_rate",
+        "no_answer_false_positive_rate"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

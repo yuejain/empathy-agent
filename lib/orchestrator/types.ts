@@ -181,6 +181,8 @@ export interface EmotionState {
   trajectory: 'rising' | 'stable' | 'declining' | 'fluctuating';
   secondaryEmotions: string[];
   riskLevel: 'low' | 'medium' | 'high';
+  /** Current rule/model assessment, excluding a concern carried forward by context alone. */
+  observedRiskLevel?: 'low' | 'medium' | 'high';
   timestamp: string;
 }
 

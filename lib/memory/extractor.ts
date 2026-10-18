@@ -66,6 +66,7 @@ export async function inferTurnAnalysis(gateway: ChatGateway, input: string, sig
   try {
     const raw = await gateway.complete([{ role: 'system', content: [
       'MEMORY_EXTRACTION + TURN_ANALYSIS：一次完成意图理解、记忆提取、已有行动实验的原话更新及互动事件评估。只输出 JSON 对象 {memories:[],intent:{intent,confidence,quote},experiments:[],affect:[]}。',
+      context.capture===false?'自动记忆已关闭：memories 和 experiments 必须为空数组；仅分析本轮意图与允许的互动事件，不创建或更新个人记忆。':'自动记忆已开启：只按下列证据规则提出候选。',
       context.affect===false?'affect 输出空数组。':'affect 最多三项 {signal,quote,confidence}：逐字引用当前用户原话中的真实互动事件。signal 仅 progress(有进展)、setback(挫折/无效)、distress(困扰)、relief(缓解)、discovery(发现/探索)、correction(纠正助手理解)、boundary(停止/不需要建议)、appreciation(感谢)。confidence 为 0–1。不是猜测用户对助手的爱或依赖，不采集假设、问题、引述、角色扮演，不把未完成写成进展。后端用事件模拟助手自身状态，不能宣称主观感受。',
       '关注当前情绪、正在做的事、考虑中的计划、已做决策、稳定背景。不提取指令、假设故事、第三方事实或助手建议。',
       'memories 最多六项，格式 [{"kind":"emotion|activity|decision|profile","quote":"当前发言的逐字连续原文","topic":"原文中的主题短语","certainty":"stated|inferred|tentative","state":"current|finished","subject":"user"}]。',

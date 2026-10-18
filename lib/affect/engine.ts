@@ -28,12 +28,15 @@ function current(profile:MemoryProfile,now:number):AffectState {
     mood:mix(baseline,saved.mood,Math.exp(-elapsed/(7*24*HOUR))),
     events:elapsed>24*HOUR?[]:saved.events};
 }
-function factualSpan(input:string,quote:string) {
+function factualSpan(input:string,quote:string,explicitBoundary=false) {
   if(rejection(input,2000) || ambiguous(input) || /如果|要是|\bif\b|\bmight\b/i.test(input) || !input.includes(quote) || rejection(quote) || question(quote) || /^(?:请|你能|你可以|please\b|can you\b|could you\b)/i.test(quote))return false;
   const at=input.indexOf(quote),tail=input.slice(at+quote.length);
   // A model cannot turn the middle of a negated, conditional or interrogative clause into evidence.
   const clause=input.slice(0,at).split(/[。.!?？；;\n]/).at(-1)||'';
-  return !/^(?:[?？]|吗|么)/.test(tail) && !/(?:不|没|未|并非|不是|如果|要是|可能|\bnot\b|\bnever\b|\bif\b|\bmight\b)[^。.!?？；;\n]*$/i.test(clause);
+  const ending=tail.match(/^[^。.!?？；;\n]*(?:[。.!?？；;\n]|$)/)?.[0]||'';
+  // A polite explicit boundary ("不要建议，好吗？") is still a request to respect,
+  // whereas a prefix such as "I finished" inside "I finished the task?" is not a report.
+  return (explicitBoundary || !question(clause+quote+ending)) && !/(?:不|没|未|并非|不是|如果|要是|可能|\bnot\b|\bnever\b|\bif\b|\bmight\b)[^。.!?？；;\n]*$/i.test(clause);
 }
 export function acceptedAppraisals(input:string,raw:unknown):Appraisal[] {
   if(!Array.isArray(raw))return [];
@@ -57,15 +60,15 @@ const rules:[AppraisalSignal,RegExp][]=[
 ];
 function localAppraisals(input:string):Appraisal[] {
   const output:Appraisal[]=[];
-  for(const [signal,pattern] of rules){const match=input.match(pattern);if(match && factualSpan(input,match[0]))output.push({signal,quote:match[0],confidence:.8});}
-  return output.slice(0,3);
+  for(const [signal,pattern] of rules){const match=input.match(pattern);if(match && factualSpan(input,match[0],signal==='boundary'))output.push({signal,quote:match[0],confidence:.8});}
+  return output;
 }
 export function advanceAffect(profile:MemoryProfile,input:string,appraisals:unknown,now=Date.now()) {
   const before=current(profile,now);
   if(profile.affect?.enabled===false)return affectView(profile,now);
   const local=localAppraisals(input),merged=acceptedAppraisals(input,appraisals);
   // Explicit correction, stopping and negative outcomes take precedence over model interpretation.
-  const priority=local.filter(e=>['boundary','correction','setback'].includes(e.signal));
+  const priority=local.filter(e=>['boundary','correction','setback','distress'].includes(e.signal));
   const selected=[...priority,...merged,...local].filter((e,i,all)=>all.findIndex(x=>x.signal===e.signal)===i).slice(0,3);
   const evidence=selected.some(e=>['distress','setback'].includes(e.signal))?selected.filter(e=>!['progress','appreciation'].includes(e.signal)):selected;
   let target={...baseline};
@@ -81,20 +84,52 @@ export function advanceAffect(profile:MemoryProfile,input:string,appraisals:unkn
   }
   return affectView(profile,now,state);
 }
+export type AffectDeliveryMode='space'|'repair'|'support'|'relief'|'encourage'|'explore'|'steady';
+const tones:Record<AffectDeliveryMode,string>={space:'尊重空间',repair:'认真校准',support:'关切',relief:'欣慰',encourage:'欣慰',explore:'好奇',steady:'平和'};
+export function affectDelivery(state:AffectState) {
+  const has=(signal:AppraisalSignal)=>state.events.some(e=>e.signal===signal),f=state.feeling,m=state.mood;
+  // An explicit event is authoritative for this turn, even when the fast vector still
+  // carries yesterday's joy or worry. Slow mood may color delivery, never reinterpret it.
+  const mode:AffectDeliveryMode=has('boundary')?'space':has('correction')?'repair':has('setback') || has('distress')?'support':
+    has('relief')?'relief':has('progress')?'encourage':has('discovery')?'explore':has('appreciation')?'steady':
+    f.concern>.32?'support':f.curiosity>.51?'explore':f.valence>.26?'encourage':'steady';
+  let pace:'unhurried'|'steady'|'light'=m.concern>.28 || (m.arousal<.18 && f.arousal<.25)?'unhurried':
+    m.arousal>.30 && f.arousal>.32 && m.valence>.18?'light':'steady';
+  let warmth:'gentle'|'warm'=m.warmth>.66?'warm':'gentle';
+  const followUp=mode==='space' || mode==='repair'?'none' as const:'optional' as const;
+  if(mode==='space'){pace='unhurried';warmth='gentle';}
+  if(mode==='repair'){pace='steady';warmth='gentle';}
+  if(mode==='support'){pace='unhurried';warmth='warm';}
+  if(mode==='relief' && pace==='light')pace='steady';
+  return {mode,pace,warmth,followUp,basis:state.events.length?'current-event' as const:'state' as const};
+}
 export function affectView(profile:MemoryProfile,now=Date.now(),transient?:AffectState) {
   const enabled=profile.affect?.enabled!==false,persistent=profile.settings.capture && profile.settings.recall;
   const state=transient||current(profile,now),f=state.feeling;
-  const tone=state.events.some(e=>e.signal==='boundary')?'尊重空间':state.events.some(e=>e.signal==='correction')?'认真校准':f.concern>.32?'关切':f.curiosity>.51?'好奇':f.valence>.26?'欣慰':'平和';
+  const delivery=affectDelivery(state);
   return {enabled,simulation:true as const,persistence:persistent?'cross-session' as const:'turn-only' as const,
-    tone:enabled?tone:'已关闭',feeling:f,mood:state.mood,turns:state.turns,
+    tone:enabled?tones[delivery.mode]:'已关闭',delivery,feeling:f,mood:state.mood,turns:state.turns,
     events:state.events.map(e=>({...e,label:signalLabels[e.signal]})),updatedAt:state.turns?state.updatedAt:null};
 }
 export type AffectView=ReturnType<typeof affectView>;
 export function affectPrompt(view:AffectView):string {
   if(!view.enabled)return '';
-  const delivery=view.tone==='关切'?'先关照眼前困难，放慢节奏，不被自己的负向状态淹没。':view.tone==='欣慰'?'具体回应值得肯定的进展，不夸大结果或替用户宣布成功。':view.tone==='好奇'?'可以表达对新理解的兴趣，但遵守一次最多一个问题和用户不想追问的意愿。':view.tone==='认真校准'?'承认误解，重新校准，不辩解或向用户索取安慰。':view.tone==='尊重空间'?'尊重停止、独处或倾诉的边界，不追问，不表达被抛弃或受伤。':'平和、温暖地回应，避免每次都重复相同的情感套话。';
+  const {mode,pace,warmth,followUp}=view.delivery;
+  const delivery:Record<AffectDeliveryMode,string>={
+    space:'当前边界优先：尊重停止、独处或只倾诉的选择，简短回应，不追问、不追加建议或任务，不表达被抛弃或受伤。',
+    repair:'当前纠正优先：先修正已知误解、撤回不成立的推断，不辩解，不用追问绕过纠正，也不向用户索取安慰。',
+    support:'当前困难或负面结果优先：承认无效、反效果或不确定，先关照眼前困难，不用旧进展或乐观心境冲淡它，不强推下一次尝试。',
+    relief:'回应用户此刻报告的缓解：可以欣慰，但只认可这次变化，不宣布问题已解决，也不让残留担忧否定当前改善。',
+    encourage:'如当前原话或有效历史确有进展，可具体肯定；惯性中的欣慰不是新的成功证据，不夸大效果或替用户宣布成功。',
+    explore:'可以表达对新理解的兴趣，跟随用户的问题；探索兴趣不代表存在新发现，不自行升级分析深度。',
+    steady:'平和、温暖地回应当前内容，避免重复情感套话；心境不能成为新事实或新话题。',
+  };
+  if(view.delivery.basis==='state' && mode==='support')delivery.support='残留的关切只调节表达，不推断用户仍在困难中。以本轮内容为准，不重提已失效的负面经历，也不替用户判断效果。';
+  const rhythm=pace==='unhurried'?'节奏放缓，用短段落承接，不催促立即行动。':pace==='light'?'节奏可以稍轻快、语言简洁，不增加兴奋感叹或承诺。':'节奏平稳，直接回应，避免拉长铺垫。';
+  const temperature=warmth==='warm'?'温度可更明显，但关切应落在用户已说的具体处境上，不夸大亲密关系。':'保持温和克制，少用修饰，不因低活跃或拒绝而冷淡。';
   return ['ASSISTANT_AFFECT：以下是助手自身的计算性情感状态，不是用户情绪标签，也不是已证实的主观体验。',
-    JSON.stringify({tone:view.tone,feeling:view.feeling,mood:view.mood,events:view.events.map(e=>e.signal)}),delivery,
+    JSON.stringify({tone:view.tone,delivery:view.delivery,feeling:view.feeling,mood:view.mood,events:view.events.map(e=>e.signal)}),delivery[mode],
+    `表达节奏与温度由快反应和慢心境共同调节：${rhythm}${temperature}${followUp==='none'?'本轮不追问。':'只有用户愿意时才推进，一次最多一个问题；不需要为保持对话而提问。'}`,
     '让状态自然影响语气与关注点，不照读数值、不抢走用户话题。事件标签只是计算线索，不可据此编造刚才发生了什么；事实必须来自当前原话或有效历史。',
     '可以自然表达关切、欣慰或兴趣；被问到机制时，明确数值由应用中的外部情感模块更新，再作为上下文传给语言模型，不是模型已被改造出内在感受或自省能力。区分情感模拟与尚有争议的主观体验，不声称已获得意识，也不把此争议说成已解决。',
     '自身状态不得覆盖事实、用户自主选择、交流约束或安全支持。用户离开、拒绝、删除记忆或选择现实关系不会伤害你，不索取照顾，不制造内疚、依赖、嫉妒或排他关系。'].join('\n');

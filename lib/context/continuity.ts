@@ -20,7 +20,7 @@ export function continuityView(profile: MemoryProfile, now = Date.now()) {
     direction_cards: entries.filter(e => (eligible(e,now) && e.key==='profile:direction' && e.certainty==='stated') || e.expiresAt>now && ['active','resolved'].includes(e.status) && currentCycle(e)?.status==='reviewed' && currentCycle(e)?.direction).map(e => ({status:'validated',id:e.id})),
   }, new Set(entries.flatMap(e => e.evidence.map(x => x.sessionId))).size);
   const effectiveStage = stage === 'journey_stage_1' && active.length ? 'journey_stage_2' : stage;
-  return { tasks, experiments:entries.filter(e=>e.expiresAt>now && ['active','resolved'].includes(e.status)).sort((a,b)=>b.updatedAt-a.updatedAt).map(experimentSummary).filter((e):e is NonNullable<typeof e>=>!!e).slice(0,12), trend: memoryEmotionTrend(profile, now), reflectionHistory:new NarrativeDetector().summarize(profile),
+  return { tasks, experiments:entries.filter(e=>e.experiment && e.expiresAt>now && ['active','resolved'].includes(e.status)).sort((a,b)=>b.updatedAt-a.updatedAt).slice(0,12).map(experimentSummary).filter((e):e is NonNullable<typeof e>=>!!e), trend: memoryEmotionTrend(profile, now), reflectionHistory:new NarrativeDetector().summarize(profile),
     preferredEntry:new TarotInteractionManager().preferredEntry(profile), journey: { stage:effectiveStage, ...tracker.getGuidance(effectiveStage) } };
 }
 export function continuityOpening(profile:MemoryProfile) {

@@ -71,6 +71,9 @@ export interface MatchedPattern {
 
 /** Layer 2: 模型层输出 */
 export interface ModelLayerOutput {
+  assessmentSource?: 'model' | 'fallback' | 'disabled';
+  /** Validated current-turn quote exists; historical or unavailable judgments do not renew history. */
+  currentEvidence?: boolean;
   mainPrediction: RiskLevel;
   mainProbabilities: Record<RiskLevel, number>;
   subtypePredictions: Record<CrisisSubtype, number>;
@@ -156,19 +159,6 @@ export interface SafetyContextTurn {
   timestamp: string;
   riskLevel?: RiskLevel;      // 该轮的分类结果
   emotionValence?: number;    // 情绪效价
-}
-
-/** 安全状态记忆 */
-export interface SafetyStateMemory {
-  sessionId: string;
-  hasTriggeredL1: boolean;
-  hasTriggeredL2: boolean;
-  crisisResourcesProvided: boolean;
-  userReactionToIntervention: 'accepted' | 'rejected' | 'avoided' | 'unknown';
-  consecutiveNegativeTurns: number;
-  lastRiskLevel: RiskLevel;
-  escalationCount: number;
-  turnCount: number;
 }
 
 // ==================== 训练数据 ====================
